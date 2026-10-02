@@ -17,15 +17,16 @@ import {
   categoryMeta,
   severityOf,
 } from '@/lib/disruptions';
-import { decodeEntities, parseImpact, relativeTime } from '@/lib/text';
+import { decodeEntities, relativeTime } from '@/lib/text';
 import { usePullToRefresh } from '@/lib/usePullToRefresh';
 import { PageContainer, PageHeader } from '@/components/ui/PageHeader';
-import { Button, ButtonLink } from '@/components/ui/Button';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SEVERITY_BG } from '@/components/ui/Badge';
 import { SearchField, SegmentedControl } from '@/components/ui/Controls';
 import { EmptyState, InlineError, Skeleton, Spinner } from '@/components/ui/Feedback';
 import { SignalCard } from '@/components/radar/SignalCard';
+import { DailyBrief } from '@/components/radar/DailyBrief';
 
 type Filter = 'all' | CategoryKey;
 type Item = Disruption & { bucket: CategoryKey };
@@ -169,29 +170,7 @@ function RadarContent() {
         </div>
       </Card>
 
-      {stats.top?.impact && (
-        <Card className="mt-4 flex flex-col gap-4 p-5 md:flex-row md:items-center">
-          <div className="min-w-0 flex-1">
-            <p className="text-caption font-medium text-accent">What to do about the top signal</p>
-            <dl className="mt-2 grid gap-3 sm:grid-cols-2">
-              {parseImpact(stats.top.impact).map((part, i) => (
-                <div key={i}>
-                  {part.label && <dt className="text-[12px] text-label-3">{part.label}</dt>}
-                  <dd className="text-[15px] leading-relaxed text-label">{part.text}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <ButtonLink href={`/startup-advisor?id=${stats.top.id}`} size="sm">
-              Plan a response
-            </ButtonLink>
-            <ButtonLink href={`/impact-copilot?id=${stats.top.id}`} size="sm" variant="secondary">
-              Impact flowchart
-            </ButtonLink>
-          </div>
-        </Card>
-      )}
+      <DailyBrief data={data} ready={status === 'ready' && !syncing} />
 
       {/* Filters */}
       <div className="mt-12 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
