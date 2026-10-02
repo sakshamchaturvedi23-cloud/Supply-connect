@@ -137,7 +137,7 @@ function AdvisorContent() {
 
   return (
     <div className="flex h-[calc(100dvh-var(--topbar-h))] flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-3 sm:px-5">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-3 sm:px-5 md:pr-20">
         <Link href="/explore" aria-label="Back to Disruption Radar" className="inline-grid h-9 w-9 place-items-center rounded-full text-label-2 hover:bg-surface-2 hover:text-label">
           <ArrowLeft className="h-[18px] w-[18px]" />
         </Link>

@@ -276,7 +276,7 @@ function ChatContent() {
 
       {/* Thread */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line px-4 sm:px-6">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line px-4 sm:px-6 md:pr-20">
           <div className="min-w-0">
             <h1 className="text-[15px] font-semibold tracking-[-0.01em]">Supply AI</h1>
             <p className="truncate text-[12px] text-label-3">{active?.messages.length ? active.title : 'Markets, logistics and supplier risk'}</p>

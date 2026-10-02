@@ -10,6 +10,7 @@ import { IconButton } from '@/components/ui/Button';
 import { Logo } from './Logo';
 import { NAV_ITEMS, isActivePath } from './nav';
 import { SavedSheet } from './SavedSheet';
+import { ProfileMenu } from './ProfileMenu';
 
 function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   return (
@@ -108,8 +109,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Menu className="h-5 w-5" />
         </IconButton>
         <Logo />
-        <SavedButton compact count={savedCount} onClick={openSaved} />
+        <div className="flex items-center gap-1">
+          <SavedButton compact count={savedCount} onClick={openSaved} />
+          <ProfileMenu />
+        </div>
       </header>
+
+      {/* Desktop account menu, top-right */}
+      <div className="fixed right-5 top-2.5 z-40 hidden md:block">
+        <ProfileMenu />
+      </div>
 
       {/* Mobile drawer */}
       {drawerOpen && (
