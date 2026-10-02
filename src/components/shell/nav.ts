@@ -1,4 +1,4 @@
-import { Bot, Compass, FlaskConical, Home, Lightbulb, Network, type LucideIcon } from 'lucide-react';
+import { Bot, Compass, Home, Lightbulb, Network, type LucideIcon } from 'lucide-react';
 
 export type NavItem = { href: string; label: string; icon: LucideIcon; description: string };
 
@@ -8,7 +8,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/impact-copilot', label: 'Impact Copilot', icon: Network, description: 'How a shock reaches your business' },
   { href: '/chat', label: 'Supply AI', icon: Bot, description: 'Ask anything about supply chains' },
   { href: '/startup-advisor', label: 'Strategy Advisor', icon: Lightbulb, description: 'Plan a response to one signal' },
-  { href: '/simulate', label: 'Simulator', icon: FlaskConical, description: 'Test a what-if disruption' },
 ];
 
 export function isActivePath(pathname: string, href: string) {

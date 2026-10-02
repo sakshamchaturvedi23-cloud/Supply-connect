@@ -19,7 +19,7 @@ const EXAMPLE_QUESTIONS = [
   'Which raw materials are getting more expensive?',
 ];
 
-const TOOL_HREFS = ['/impact-copilot', '/chat', '/simulate'];
+const TOOL_HREFS = ['/impact-copilot', '/chat', '/startup-advisor'];
 
 const noopSubscribe = () => () => {};
 const todayLabel = () => new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
