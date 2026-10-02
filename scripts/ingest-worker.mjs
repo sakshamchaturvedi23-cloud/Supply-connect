@@ -94,6 +94,25 @@ const getImageContent = (itemXml, title) => {
   return 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=800&q=80';
 };
 
+// Original article URL from an RSS <item> (<link>…</link>) or Atom <entry> (<link href="…"/>).
+const getArticleLink = (itemXml) => {
+  const rss = itemXml.match(/<link>([\s\S]*?)<\/link>/i);
+  const atom = itemXml.match(/<link[^>]*href="([^"]+)"/i);
+  const raw = (rss ? rss[1] : atom ? atom[1] : '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+  return /^https?:\/\//i.test(raw) ? raw : null;
+};
+
+// Inserts a row; if the source_url column doesn't exist yet (migration not run), retries without it.
+async function insertDisruption(supabase, row) {
+  let { error } = await supabase.from('disruptions').insert([row]);
+  if (error && /source_url/i.test(error.message || '')) {
+    const rest = { ...row };
+    delete rest.source_url;
+    ({ error } = await supabase.from('disruptions').insert([rest]));
+  }
+  return error;
+}
+
 async function runIngestion() {
   console.log('🚀 Starting dynamic ingestion with core disruption categories...');
 
@@ -140,8 +159,9 @@ async function runIngestion() {
           category: aiAnalysis.category,
           severity: aiAnalysis.severity,
           location: aiAnalysis.location,
-          impact: `Global Giants: ${aiAnalysis.stocking_advice} Local Shopkeepers & Small Businesses: ${aiAnalysis.startup_opportunity}`,
+          impact: `Global Giants: ${aiAnalysis.stocking_advice} | Local Shopkeepers & Small Businesses: ${aiAnalysis.startup_opportunity}`,
           image_url: imageUrl,
+          source_url: getArticleLink(itemXml),
           created_at: new Date().toISOString()
         });
       }
@@ -160,15 +180,16 @@ async function runIngestion() {
       .single();
 
     if (existing) {
-      await supabase.from('disruptions').update({ 
-        image_url: item.image_url,
-        impact: item.impact,
-        category: item.category 
-      }).eq('title', item.title);
+      const changes = { image_url: item.image_url, impact: item.impact, category: item.category };
+      // Backfill the article link on existing rows (ignored if the column doesn't exist yet).
+      const { error } = await supabase.from('disruptions').update({ ...changes, source_url: item.source_url }).eq('title', item.title);
+      if (error && /source_url/i.test(error.message || '')) {
+        await supabase.from('disruptions').update(changes).eq('title', item.title);
+      }
       continue;
     }
 
-    await supabase.from('disruptions').insert([item]);
+    await insertDisruption(supabase, item);
   }
 
   console.log('🎉 Ingestion completed successfully with streamlined categories!');

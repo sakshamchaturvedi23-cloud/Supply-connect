@@ -70,6 +70,24 @@ const getImageContent = (itemXml, title) => {
   return 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=800&q=80';
 };
 
+// Original article URL from an RSS <item> (<link>…</link>) or Atom <entry> (<link href="…"/>).
+const getArticleLink = (itemXml) => {
+  const rss = itemXml.match(/<link>([\s\S]*?)<\/link>/i);
+  const atom = itemXml.match(/<link[^>]*href="([^"]+)"/i);
+  const raw = (rss ? rss[1] : atom ? atom[1] : '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+  return /^https?:\/\//i.test(raw) ? raw : null;
+};
+
+// Inserts a row; if the source_url column doesn't exist yet (migration not run), retries without it.
+async function insertDisruption(supabase, row) {
+  let { error } = await supabase.from('disruptions').insert([row]);
+  if (error && /source_url/i.test(error.message || '')) {
+    const { source_url, ...rest } = row; // eslint-disable-line @typescript-eslint/no-unused-vars
+    ({ error } = await supabase.from('disruptions').insert([rest]));
+  }
+  return error;
+}
+
 export async function GET() {
   try {
     const feedUrls = [
@@ -136,15 +154,16 @@ export async function GET() {
         const imageUrl = getImageContent(itemXml, title);
         const impact = `Stocking Action: ${aiInsights.stocking_advice} | Startup Opportunity: ${aiInsights.startup_opportunity}`;
 
-        const { error } = await supabase.from('disruptions').insert([{
+        const error = await insertDisruption(supabase, {
           title,
           category: aiInsights.category,
           severity: aiInsights.severity,
           location: aiInsights.location,
           description,
           impact,
-          image_url: imageUrl
-        }]);
+          image_url: imageUrl,
+          source_url: getArticleLink(itemXml),
+        });
 
         if (!error) count++;
       } catch (err) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Disruption, dedupe, fetchDisruptions } from '@/lib/disruptions';
+import { Disruption, dedupe, fetchDisruptions, shuffled } from '@/lib/disruptions';
 import { STORAGE_KEYS } from '@/lib/storage';
 
 const AUTO_SYNC_MS = 24 * 60 * 60 * 1000;
@@ -17,7 +17,8 @@ function load(force = false): Promise<Disruption[]> {
   if (!inflightLoad) {
     inflightLoad = fetchDisruptions()
       .then((rows) => {
-        const data = dedupe(rows);
+        // Every fresh load (page reload, sync, stale cache) deals a new shuffled feed.
+        const data = shuffled(dedupe(rows));
         cache = { data, at: Date.now() };
         return data;
       })
@@ -105,5 +106,12 @@ export function useDisruptions({ autoSync = false }: { autoSync?: boolean } = {}
     };
   }, [autoSync, reload]);
 
-  return { data, status, syncing, sync, reload, lastSyncedAt };
+  /** Re-deal the feed without hitting the network. */
+  const shuffle = useCallback(() => {
+    const next = shuffled(cache?.data ?? data);
+    if (cache) cache = { ...cache, data: next };
+    setData(next);
+  }, [data]);
+
+  return { data, status, syncing, sync, reload, shuffle, lastSyncedAt };
 }

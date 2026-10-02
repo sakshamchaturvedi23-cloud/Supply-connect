@@ -13,6 +13,7 @@ export type Disruption = {
   description?: string | null;
   impact?: string | null;
   image_url?: string | null;
+  source_url?: string | null;
   created_at?: string | null;
 };
 
@@ -110,7 +111,8 @@ export function bySeverityThenDate(a: Disruption, b: Disruption) {
 export async function fetchDisruptions(limit = 300): Promise<Disruption[]> {
   const { data, error } = await supabase
     .from('disruptions')
-    .select('id,title,category,severity,location,description,impact,image_url,created_at')
+    // '*' so the page keeps working before the source_url migration has been run.
+    .select('*')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -135,4 +137,21 @@ export function dedupe(list: Disruption[]): Disruption[] {
     titles.add(t);
     return true;
   });
+}
+
+/** Non-mutating Fisher–Yates shuffle. Call from event handlers / data loading, never during render. */
+export function shuffled<T>(input: T[]): T[] {
+  const a = [...input];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Original article if we stored it, otherwise a news search for the headline. */
+export function articleLink(d: Disruption): { href: string; isSource: boolean } {
+  const url = d.source_url?.trim();
+  if (url && /^https?:\/\//i.test(url)) return { href: url, isSource: true };
+  return { href: `https://news.google.com/search?q=${encodeURIComponent(d.title)}`, isSource: false };
 }

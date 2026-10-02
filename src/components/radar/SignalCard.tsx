@@ -1,11 +1,11 @@
 'use client';
 
 import React, { memo } from 'react';
-import { Bookmark, MapPin, Network } from 'lucide-react';
-import { CategoryKey, Disruption, FALLBACK_IMAGE, categoryMeta, imageFor } from '@/lib/disruptions';
+import { ArrowUpRight, Bookmark, MapPin } from 'lucide-react';
+import { CategoryKey, Disruption, FALLBACK_IMAGE, articleLink, categoryMeta, imageFor } from '@/lib/disruptions';
 import { decodeEntities, parseImpact } from '@/lib/text';
 import { SeverityBadge } from '@/components/ui/Badge';
-import { ButtonLink, IconButton } from '@/components/ui/Button';
+import { ButtonLink, IconButton, buttonClass } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 
 type Props = {
@@ -16,6 +16,7 @@ type Props = {
 
 function SignalCardImpl({ item, saved, onToggleSave }: Props) {
   const action = parseImpact(item.impact)[0];
+  const article = articleLink(item);
   return (
     <article
       id={`card-${item.id}`}
@@ -73,9 +74,16 @@ function SignalCardImpl({ item, saved, onToggleSave }: Props) {
           <ButtonLink href={`/startup-advisor?id=${item.id}`} size="sm" className="flex-1">
             Plan a response
           </ButtonLink>
-          <ButtonLink href={`/impact-copilot?id=${item.id}`} size="sm" variant="secondary" aria-label="Open impact flowchart">
-            <Network className="h-3.5 w-3.5" /> Flowchart
-          </ButtonLink>
+          <a
+            href={article.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonClass('secondary', 'sm')}
+            title={article.isSource ? 'Open the original article' : 'Search news for this headline'}
+          >
+            {article.isSource ? 'Read article' : 'Find article'}
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          </a>
         </div>
       </div>
     </article>

@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Compass, RefreshCw } from 'lucide-react';
+import { Compass, RefreshCw, Shuffle } from 'lucide-react';
 import { useDisruptions } from '@/lib/useDisruptions';
 import { useSavedSignals } from '@/lib/saved';
 import {
@@ -33,7 +33,7 @@ const PER_CATEGORY_IN_ALL = 3;
 
 function RadarContent() {
   const highlightId = useSearchParams().get('highlight');
-  const { data, status, syncing, sync, lastSyncedAt } = useDisruptions({ autoSync: true });
+  const { data, status, syncing, sync, shuffle, lastSyncedAt } = useDisruptions({ autoSync: true });
   const { isSaved, toggle } = useSavedSignals();
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
@@ -41,10 +41,8 @@ function RadarContent() {
 
   /* ---------- derived data ---------- */
 
-  const items: Item[] = useMemo(
-    () => [...data].sort(bySeverityThenDate).map((d) => ({ ...d, bucket: categorize(d) })),
-    [data],
-  );
+  // `data` arrives already shuffled, so every load/sync/shuffle deals a different set of cards.
+  const items: Item[] = useMemo(() => data.map((d) => ({ ...d, bucket: categorize(d) })), [data]);
 
   const buckets = useMemo(() => {
     const b = Object.fromEntries(CATEGORIES.map((c) => [c.key, [] as Item[]])) as Record<CategoryKey, Item[]>;
@@ -62,7 +60,7 @@ function RadarContent() {
     } else if (filter !== 'all') {
       list = buckets[filter];
     } else {
-      // Balanced mix: the riskiest few from every sector.
+      // Balanced mix: a few random signals from every sector.
       list = [];
       for (let r = 0; r < PER_CATEGORY_IN_ALL; r++) {
         for (const c of CATEGORIES) if (buckets[c.key][r]) list.push(buckets[c.key][r]);
@@ -78,7 +76,9 @@ function RadarContent() {
   const stats = useMemo(() => {
     const counts = { critical: 0, high: 0, medium: 0, low: 0 };
     for (const i of items) counts[severityOf(i.severity)]++;
-    return { total: items.length, counts, urgent: counts.critical + counts.high, top: items[0] };
+    // The top signal is always the most severe one, regardless of shuffle order.
+    const top = items.reduce<Item | undefined>((best, i) => (!best || bySeverityThenDate(i, best) < 0 ? i : best), undefined);
+    return { total: items.length, counts, urgent: counts.critical + counts.high, top };
   }, [items]);
 
   const filterOptions = useMemo(
@@ -119,12 +119,16 @@ function RadarContent() {
 
       <PageHeader
         title="Disruption Radar"
-        description="Live risk signals from global news, ranked by severity. Save the ones that matter and turn any of them into a plan."
+        description="Live risk signals from global news. Save the ones that matter, read the original article, or turn any of them into a plan."
         actions={
           <>
             <span className="text-[13px] text-label-3" aria-live="polite">
               {syncing ? 'Syncing latest news…' : lastSyncedAt ? `Synced ${relativeTime(lastSyncedAt)}` : null}
             </span>
+            <Button variant="secondary" size="sm" onClick={shuffle} disabled={status !== 'ready' || syncing}>
+              <Shuffle className="h-3.5 w-3.5" />
+              Shuffle
+            </Button>
             <Button variant="secondary" size="sm" onClick={sync} disabled={syncing}>
               {syncing ? <Spinner className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5" />}
               Sync now

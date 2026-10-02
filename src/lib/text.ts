@@ -10,18 +10,19 @@ export function decodeEntities(input?: string | null): string {
 }
 
 /**
- * Ingest stores impact as "Stocking Action: … | Startup Opportunity: …".
+ * Ingest stores impact as labelled parts, e.g. "Stocking Action: … | Startup Opportunity: …".
  * Split it into labelled parts; plain text comes back as one unlabeled part.
  */
 export function parseImpact(impact?: string | null): { label?: string; text: string }[] {
   const raw = decodeEntities(impact).trim();
   if (!raw) return [];
   return raw
-    .split('|')
-    .map((part) => part.trim())
-    .filter(Boolean)
+    // "A: x | B: y" (API ingest) or "Global Giants: x Local Shopkeepers & Small Businesses: y" (worker)
+    .split(/\s*\|\s*|\s+(?=(?:Startup Opportunity|Local Shopkeepers & Small Businesses):)/)
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
     .map((part) => {
-      const m = part.match(/^([A-Za-z][A-Za-z\s]{2,30}):\s*(.+)$/);
+      const m = part.match(/^([A-Za-z][A-Za-z&\s]{2,40}):\s*(.+)$/);
       return m ? { label: m[1].trim(), text: m[2].trim() } : { text: part };
     });
 }
