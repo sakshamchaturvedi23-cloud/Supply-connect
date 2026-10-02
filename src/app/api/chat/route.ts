@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireUser } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
@@ -54,6 +55,9 @@ function sanitize(raw: unknown): InMsg[] {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+
   let body: { messages?: unknown; disruptionContext?: DisruptionContext; stream?: boolean };
   try {
     body = await req.json();

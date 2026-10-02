@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireUser } from '@/lib/supabase/server';
 import { extractJson } from '@/lib/impact-schema';
 import { briefKey, type BriefSignal, type DailyBrief } from '@/lib/brief';
 
@@ -63,6 +64,9 @@ async function callModel(model: string, userPrompt: string): Promise<string> {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+
   let body: { day?: string; signals?: BriefSignal[]; force?: boolean };
   try {
     body = await req.json();

@@ -7,7 +7,7 @@ import { displayName, initials, signOut, useAuthUser } from '@/lib/auth';
 import { Spinner } from '@/components/ui/Feedback';
 import { cn } from '@/components/ui/cn';
 
-/** Avatar button with an account dropdown. Works signed-out ("Guest") until login is built. */
+/** Avatar button with an account dropdown (signed-in user, Log out). */
 export function ProfileMenu({ className }: { className?: string }) {
   const router = useRouter();
   const { user } = useAuthUser();
@@ -36,7 +36,7 @@ export function ProfileMenu({ className }: { className?: string }) {
     await signOut();
     setSigningOut(false);
     setOpen(false);
-    router.push('/'); // switch to '/login' once the login page exists
+    router.replace('/login');
     router.refresh();
   };
 

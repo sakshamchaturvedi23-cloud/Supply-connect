@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireUser } from '@/lib/supabase/server';
 import { extractJson, normalizeAnalysis } from '@/lib/impact-schema';
 
 export const runtime = 'nodejs';
@@ -59,6 +60,9 @@ async function callModel(model: string, userPrompt: string): Promise<string> {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+
   try {
     const { userProfession, disruptionContext } = await req.json();
 

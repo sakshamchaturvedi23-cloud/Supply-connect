@@ -11,6 +11,7 @@ import { Logo } from './Logo';
 import { NAV_ITEMS, isActivePath } from './nav';
 import { SavedSheet } from './SavedSheet';
 import { ProfileMenu } from './ProfileMenu';
+import { isPublicPath } from '@/lib/redirect';
 
 function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   return (
@@ -83,6 +84,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [drawerOpen]);
+
+  // Login and auth callback pages render without the app chrome.
+  if (isPublicPath(pathname)) return <>{children}</>;
 
   return (
     <div className="min-h-[100dvh]">

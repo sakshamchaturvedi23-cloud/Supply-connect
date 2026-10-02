@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireUser } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -89,6 +90,9 @@ async function insertDisruption(supabase, row) {
 }
 
 export async function GET() {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+
   try {
     const feedUrls = [
       'https://techcrunch.com/feed/',
