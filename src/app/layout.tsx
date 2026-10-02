@@ -1,23 +1,26 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import { ThemeProvider } from "@/context/ThemeContext";
+import type { Metadata, Viewport } from 'next';
+import './globals.css';
+import { AppShell } from '@/components/shell/AppShell';
 
 export const metadata: Metadata = {
-  title: "Supply Connect | Global Supply Chain Early Warning & Impact Analysis System",
-  description: "Anticipate disruptions before they hit. Real-time AI early warning, downstream ripple effect mapping, what-if simulations, and startup opportunity advisory.",
+  title: {
+    default: 'Supply Connect — supply chain early warning',
+    template: '%s · Supply Connect',
+  },
+  description:
+    'See global supply chain disruptions early, understand how they reach your business, and plan a response with AI.',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export const viewport: Viewport = {
+  themeColor: '#000000',
+  colorScheme: 'dark',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark h-full antialiased" suppressHydrationWarning>
-      <body className="min-h-full flex flex-col bg-[#f8fafc] text-[#090d16] dark:bg-[#050811] dark:text-[#f1f5f9] transition-colors duration-200">
-        <ThemeProvider>
-          {children}
-        </ThemeProvider>
+    <html lang="en" className="dark">
+      <body>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

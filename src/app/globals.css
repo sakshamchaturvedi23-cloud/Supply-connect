@@ -1,90 +1,125 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* ------------------------------------------------------------------
+   Supply Connect design tokens
+   Apple-style dark: true black canvas, elevated greys, one accent.
+   Green / amber / red are reserved for risk severity only.
+------------------------------------------------------------------- */
+@theme {
+  --color-canvas: #000000;
+  --color-surface: #1c1c1e;
+  --color-surface-2: #2c2c2e;
+  --color-surface-3: #3a3a3c;
+  --color-line: rgb(255 255 255 / 0.08);
+  --color-line-strong: rgb(255 255 255 / 0.16);
 
-:root {
-  --background: #f8fafc;
-  --foreground: #090d16;
-  --card: #ffffff;
-  --card-border: #e2e8f0;
-  --muted: #64748b;
-  --accent-emerald: #10b981;
+  --color-label: #f5f5f7;
+  --color-label-2: #a1a1a6;
+  --color-label-3: #6e6e73;
+
+  --color-accent: #0a84ff;
+  --color-accent-hover: #3a9bff;
+
+  --color-critical: #ff453a;
+  --color-high: #ff9f0a;
+  --color-medium: #ffd60a;
+  --color-low: #30d158;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  --radius-card: 1.125rem;
 }
 
-.dark {
-  --background: #050811;
-  --foreground: #f1f5f9;
-  --card: #0d1424;
-  --card-border: #1e293b;
-  --muted: #94a3b8;
-  --accent-emerald: #10b981;
+/* Type scale (Apple HIG-inspired) */
+@utility text-display {
+  font-size: clamp(2.5rem, 5vw, 3.75rem);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+}
+@utility text-title-1 {
+  font-size: clamp(1.75rem, 3vw, 2.125rem);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+}
+@utility text-title-2 {
+  font-size: 1.375rem;
+  line-height: 1.2;
+  letter-spacing: -0.018em;
+  font-weight: 600;
+}
+@utility text-headline {
+  font-size: 1.0625rem;
+  line-height: 1.35;
+  letter-spacing: -0.012em;
+  font-weight: 600;
+}
+@utility text-body {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  letter-spacing: -0.006em;
+}
+@utility text-caption {
+  font-size: 0.8125rem;
+  line-height: 1.4;
 }
 
-body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  overflow-x: hidden;
-  min-height: 100vh;
+@layer base {
+  html {
+    color-scheme: dark;
+    background: var(--color-canvas);
+    --topbar-h: 3.5rem;
+  }
+  @media (min-width: 768px) {
+    html {
+      --topbar-h: 0px;
+    }
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-label);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "ss01", "cv11";
+  }
+  ::selection {
+    background: rgb(10 132 255 / 0.45);
+    color: #fff;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.14) transparent;
+  }
 }
 
-/* Subtle glowing cybernetic grid background */
-.bg-cyber-grid {
-  background-size: 36px 36px;
-  background-image: 
-    linear-gradient(to right, rgba(16, 185, 129, 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(16, 185, 129, 0.05) 1px, transparent 1px);
+/* Apple "material" — used only for sticky chrome, never on repeated cards (perf). */
+@utility material {
+  background: rgb(28 28 30 / 0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
 }
 
-.dark .bg-cyber-grid {
-  background-size: 36px 36px;
-  background-image: 
-    linear-gradient(to right, rgba(16, 185, 129, 0.08) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(16, 185, 129, 0.08) 1px, transparent 1px);
-}
-
-/* Glow effects */
-.glow-emerald {
-  box-shadow: 0 0 25px -4px rgba(16, 185, 129, 0.35);
-}
-
-.glow-emerald-lg {
-  box-shadow: 0 0 45px -8px rgba(16, 185, 129, 0.45);
-}
-
-.glow-amber {
-  box-shadow: 0 0 25px -4px rgba(245, 158, 11, 0.35);
-}
-
-.glow-red {
-  box-shadow: 0 0 25px -4px rgba(239, 68, 68, 0.35);
-}
-
-/* Glassmorphism helpers */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-}
-
-.dark .glass-panel {
-  background: rgba(10, 16, 30, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(16, 185, 129, 0.15);
-}
-
-.glass-card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-}
-
-.dark .glass-card {
-  background: rgba(13, 20, 36, 0.8);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

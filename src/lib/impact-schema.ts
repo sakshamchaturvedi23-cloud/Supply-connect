@@ -72,7 +72,10 @@ const TRENDS = ['up', 'down', 'flat'] as const;
 const str = (v: unknown, fb = ''): string =>
   typeof v === 'string' && v.trim() ? stripMarkdown(v.trim()) : fb;
 
-const arr = (v: unknown): any[] => (Array.isArray(v) ? v : []);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untrusted model JSON, every field is validated below
+type Loose = any;
+
+const arr = (v: unknown): Loose[] => (Array.isArray(v) ? v : []);
 
 const pick = <T extends string>(v: unknown, allowed: readonly T[], fb: T): T => {
   const s = String(v ?? '').trim().toLowerCase();
@@ -98,7 +101,7 @@ export function extractJson(text: string): unknown {
 }
 
 /** Coerce any model output into a safe, fully-populated ImpactAnalysis. */
-export function normalizeAnalysis(raw: any): ImpactAnalysis {
+export function normalizeAnalysis(raw: Loose): ImpactAnalysis {
   const usedIds = new Set<string>();
   const levels = {} as Record<LevelKey, ImpactLevel>;
 
@@ -106,7 +109,7 @@ export function normalizeAnalysis(raw: any): ImpactAnalysis {
     const l = raw?.levels?.[key] ?? {};
     let nodes: ImpactNode[] = arr(l.nodes)
       .slice(0, 4)
-      .map((n: any, i: number) => {
+      .map((n: Loose, i: number) => {
         let id = str(n?.id, `${PREFIX[key]}${i + 1}`);
         if (usedIds.has(id)) id = `${PREFIX[key]}${i + 1}_${usedIds.size}`;
         usedIds.add(id);
@@ -131,8 +134,8 @@ export function normalizeAnalysis(raw: any): ImpactAnalysis {
   const levelOf = new Map<string, number>();
   LEVEL_ORDER.forEach((k, i) => levels[k].nodes.forEach((n) => levelOf.set(n.id, i)));
 
-  let links = arr(raw?.links)
-    .map((l: any) => ({ from: str(l?.from), to: str(l?.to), label: str(l?.label) || undefined }))
+  const links = arr(raw?.links)
+    .map((l: Loose) => ({ from: str(l?.from), to: str(l?.to), label: str(l?.label) || undefined }))
     .filter((l) => {
       const a = levelOf.get(l.from);
       const b = levelOf.get(l.to);
@@ -151,12 +154,12 @@ export function normalizeAnalysis(raw: any): ImpactAnalysis {
 
   const playbook: PlaybookPhase[] = arr(raw?.playbook)
     .slice(0, 3)
-    .map((p: any, i: number) => ({
+    .map((p: Loose, i: number) => ({
       phase: str(p?.phase, ['Immediate', 'Short-term', 'Strategic'][i] ?? `Phase ${i + 1}`),
       horizon: str(p?.horizon, ['0–7 days', '2–6 weeks', '1–6 months'][i] ?? ''),
       actions: arr(p?.actions)
         .slice(0, 4)
-        .map((a: any) => ({
+        .map((a: Loose) => ({
           title: str(a?.title, 'Action'),
           detail: str(a?.detail),
           priority: pick(a?.priority, PRIORITIES, 'P1'),
@@ -167,7 +170,7 @@ export function normalizeAnalysis(raw: any): ImpactAnalysis {
 
   const metrics: ImpactMetric[] = arr(raw?.metrics)
     .slice(0, 4)
-    .map((m: any) => ({
+    .map((m: Loose) => ({
       label: str(m?.label, 'Indicator'),
       value: str(m?.value, '—'),
       trend: pick(m?.trend, TRENDS, 'flat'),

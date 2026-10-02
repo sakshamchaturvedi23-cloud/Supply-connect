@@ -33,10 +33,14 @@ const MODELS = [
 
 type InMsg = { role: 'user' | 'assistant'; content: string };
 
+type RawMsg = { role?: unknown; sender?: unknown; content?: unknown; text?: unknown };
+
+type DisruptionContext = { title?: string; category?: string; location?: string; impact?: string };
+
 function sanitize(raw: unknown): InMsg[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((m: any) => {
+  return (raw as RawMsg[])
+    .map((m) => {
       const roleField = m?.role || m?.sender;
       const contentField = m?.content || m?.text;
 
@@ -50,7 +54,7 @@ function sanitize(raw: unknown): InMsg[] {
 }
 
 export async function POST(req: Request) {
-  let body: any;
+  let body: { messages?: unknown; disruptionContext?: DisruptionContext; stream?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -122,7 +126,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: 'All models failed or missing body', details: errors }, { status: 502 });
   }
 
-  if (wantStream) {
+  // Some routers ignore `stream: true` and answer with plain JSON — handle that below.
+  const upstreamIsJson = (upstream.headers.get('content-type') ?? '').includes('application/json');
+
+  if (wantStream && !upstreamIsJson) {
     const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
     const encoder = new TextEncoder();
@@ -170,28 +177,18 @@ export async function POST(req: Request) {
         'X-Model-Used': modelUsed,
       },
     });
-  } else {
-    try {
-      const data = await upstream.json();
-      let reply = data?.choices?.[0]?.message?.content || data?.reply || 'I am ready to assist you.';
-      
-      const followupStart = reply.indexOf('<followups>');
-      if (followupStart !== -1) {
-        reply = reply.slice(0, followupStart).trimEnd();
-      }
-
-      return NextResponse.json({ success: true, reply, modelUsed });
-    } catch (e) {
-      const text = await upstream.text();
-      let cleanText = text;
-      const followupStart = cleanText.indexOf('<followups>');
-      if (followupStart !== -1) {
-        cleanText = cleanText.slice(0, followupStart).trimEnd();
-      }
-      return NextResponse.json({ success: true, reply: cleanText, modelUsed });
-    }
   }
+
+  // Non-streaming: read the body once, then parse.
+  const raw = await upstream.text();
+  let reply = raw;
+  try {
+    const data = JSON.parse(raw);
+    reply = data?.choices?.[0]?.message?.content || data?.reply || '';
+  } catch {
+    /* plain-text upstream */
+  }
+  const cut = reply.indexOf('<followups>');
+  if (cut !== -1) reply = reply.slice(0, cut).trimEnd();
+  return NextResponse.json({ success: true, reply: reply || 'I am ready to assist you.', modelUsed });
 }
-
-
-

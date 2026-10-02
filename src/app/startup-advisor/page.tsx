@@ -1,328 +1,229 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Lightbulb, Send, ArrowLeft, Loader2, Bookmark, Check, ShieldAlert, Cpu } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
+import { ArrowLeft, Bookmark, Check, MapPin } from 'lucide-react';
+import { AssistantMessage, UserBubble } from '@/components/chat/Messages';
+import { Composer } from '@/components/chat/Composer';
+import { Button, IconButton } from '@/components/ui/Button';
+import { SeverityBadge } from '@/components/ui/Badge';
+import { Disruption, fetchDisruption } from '@/lib/disruptions';
+import { AdvisorMessage, readAdvisorChat, useAdvisorChats } from '@/lib/saved';
+import { splitFollowups, streamChat } from '@/lib/chat/stream';
+import { useAutoScroll } from '@/lib/chat/useAutoScroll';
+import { decodeEntities, parseImpact, uid } from '@/lib/text';
 
-// Helper to decode HTML entities like &apos;, &amp;, etc.
-const decodeHtmlEntities = (str: string) => {
-  if (!str) return '';
-  return str
-    .replace(/&apos;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
+const GREETING: AdvisorMessage = {
+  role: 'assistant',
+  content:
+    'I’m your strategy advisor. Tell me about your business and I’ll help you protect it from supply shocks, or find the opportunity inside one.',
 };
 
-// Helper to clean and format AI markdown response nicely into JSX without raw asterisks
-const renderFormattedMessage = (content: string) => {
-  if (!content) return null;
-  const lines = content.split('\n');
+const STARTERS = [
+  'How do I protect my margins from this?',
+  'Which suppliers or regions should I diversify to?',
+  'Is there a business opportunity here?',
+];
 
-  return lines.map((line, idx) => {
-    const parts = line.split(/\*\*(.*?)\*\*/g);
-    const isBullet = line.trim().startsWith('-') || line.trim().startsWith('*');
+function contextMessage(d: Disruption): AdvisorMessage {
+  const where = [d.location, d.category].filter(Boolean).map((x) => decodeEntities(x)).join(', ');
+  return {
+    role: 'assistant',
+    content: `You’re looking at **${decodeEntities(d.title)}**${where ? ` (${where})` : ''}. Do you want to limit the damage to your supply chain, or find a way to benefit from it?`,
+  };
+}
 
-    return (
-      <div key={idx} className={`${isBullet ? 'pl-4 my-1.5 flex items-start gap-2' : 'my-1.5'}`}>
-        {isBullet && <span className="text-emerald-400 font-bold">•</span>}
-        <span className="flex-1">
-          {parts.map((part, i) => 
-            i % 2 === 1 ? (
-              <strong key={i} className="font-semibold text-emerald-300">
-                {part.replace(/[-*]/g, '').trim()}
-              </strong>
-            ) : (
-              part
-            )
-          )}
-        </span>
-      </div>
-    );
-  });
-};
+function AdvisorContent() {
+  const params = useSearchParams();
+  const disruptionId = params.get('id');
+  const sessionParam = params.get('sessionId');
+  const { upsert, get: getSaved } = useAdvisorChats();
 
-function StartupAdvisorContent() {
-  const searchParams = useSearchParams();
-  const disruptionId = searchParams.get('id');
-  const sessionIdParam = searchParams.get('sessionId');
+  const [sessionId] = useState(() => sessionParam ?? `session_${uid()}`);
+  const [disruption, setDisruption] = useState<Disruption | null>(null);
+  const [messages, setMessages] = useState<AdvisorMessage[]>([GREETING]);
+  const [input, setInput] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const [errorIndex, setErrorIndex] = useState<number | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const restoredRef = useRef(false);
+  const { ref: scrollRef, onScroll, pin } = useAutoScroll<HTMLDivElement>(messages);
 
-  const [disruption, setDisruption] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; modelUsed?: string }>>([
-    { role: 'assistant', content: 'Hello! I am your AI Supply Chain Intelligence Officer. Let me know which perspective you would like to explore regarding our loaded global telemetry.' }
-  ]);
-  const [inputMessage, setInputMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false); // 🌊 3-Dot Typing Animation State
-  const [savingChat, setSavingChat] = useState(false);
-  const [savedSuccess, setSavedSuccess] = useState(false);
-  const [currentSessionId, setCurrentSessionId] = useState<string>(
-    sessionIdParam || `session_${Date.now()}`
+  const alreadySaved = Boolean(getSaved(sessionId));
+
+  /* ---------- load context / resume a saved session ---------- */
+
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+
+    const saved = sessionParam ? readAdvisorChat(sessionParam) : undefined;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time restore from localStorage
+    if (saved?.messages?.length) setMessages(saved.messages);
+
+    const id = disruptionId ?? saved?.disruptionId;
+    if (!id) return;
+    fetchDisruption(id)
+      .then((d) => {
+        if (!d) return;
+        setDisruption(d);
+        if (!saved) setMessages((prev) => (prev.length === 1 ? [...prev, contextMessage(d)] : prev));
+      })
+      .catch((e) => console.error('Could not load signal', e));
+  }, [disruptionId, sessionParam]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  /* ---------- chat ---------- */
+
+  const send = useCallback(
+    async (text: string) => {
+      const content = text.trim();
+      if (!content || abortRef.current) return;
+
+      const history: AdvisorMessage[] = [...messages, { role: 'user', content }];
+      const replyIndex = history.length;
+      setMessages([...history, { role: 'assistant', content: '' }]);
+      setInput('');
+      setErrorIndex(null);
+      setStreaming(true);
+      pin();
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const patch = (fn: (m: AdvisorMessage) => AdvisorMessage) =>
+        setMessages((prev) => prev.map((m, i) => (i === replyIndex ? fn(m) : m)));
+
+      try {
+        const { modelUsed } = await streamChat({
+          messages: history.map((m) => ({ role: m.role, content: m.role === 'assistant' ? splitFollowups(m.content).body : m.content })),
+          disruptionContext: disruption,
+          signal: controller.signal,
+          onDelta: (chunk) => patch((m) => ({ ...m, content: m.content + chunk })),
+        });
+        if (modelUsed) patch((m) => ({ ...m, modelUsed }));
+      } catch (e) {
+        if ((e as Error)?.name !== 'AbortError') {
+          console.error(e);
+          setErrorIndex(replyIndex);
+          patch((m) => ({ ...m, content: m.content || 'The advisor couldn’t answer. Check that your LLM server is running, then try again.' }));
+        }
+      } finally {
+        abortRef.current = null;
+        setStreaming(false);
+      }
+    },
+    [messages, disruption, pin],
   );
 
-  // Fetch disruption details if launched from a card
-  useEffect(() => {
-    const fetchContext = async () => {
-      if (disruptionId) {
-        try {
-          const { data, error } = await supabase
-            .from('disruptions')
-            .select('*')
-            .eq('id', disruptionId)
-            .single();
-
-          if (data) {
-            setDisruption(data);
-            const cleanTitle = decodeHtmlEntities(data.title);
-            const contextContent = `I see you are analyzing: "${cleanTitle}" located in ${data.location} (${data.category}). How would you like to capitalize on this disruption or mitigate its supply chain impact?`;
-
-            // Prevent duplicate message injection on React strict mode re-mounts
-            setMessages(prev => {
-              if (prev.some(m => m.content.includes(cleanTitle))) return prev;
-              return [
-                ...prev,
-                { role: 'assistant', content: contextContent }
-              ];
-            });
-          }
-        } catch (err) {
-          console.error('Error fetching context:', err);
-        }
-      }
-
-      // If resuming a saved session from URL
-      if (sessionIdParam) {
-        try {
-          const storedChats = localStorage.getItem('supply_connect_chats');
-          if (storedChats) {
-            const chats = JSON.parse(storedChats);
-            const targetChat = chats.find((c: any) => c.sessionId === sessionIdParam);
-            if (targetChat && targetChat.messages) {
-              setMessages(targetChat.messages);
-            }
-          }
-        } catch (e) {
-          console.error('Error loading session:', e);
-        }
-      }
-
-      setLoading(false);
-    };
-
-    fetchContext();
-  }, [disruptionId, sessionIdParam]);
-
-  // 🤖 Real LLM API Integration with FreeLLMAPI router & Typing Indicator
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim()) return;
-
-    const userText = inputMessage;
-    const newMessages = [...messages, { role: 'user' as const, content: userText }];
-    setMessages(newMessages);
-    setInputMessage('');
-    setIsTyping(true); // Start waving 3 dots loader
-
-    try {
-      const formattedForApi = newMessages.map(m => ({
-        sender: m.role,
-        text: m.content
-      }));
-
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: formattedForApi,
-          disruptionContext: disruption
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.reply) {
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: data.reply, 
-          modelUsed: data.modelUsed 
-        }]);
-      } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.error || 'Failed to fetch response from FreeLLMAPI router.' }]);
-      }
-    } catch (err) {
-      console.error('LLM connection error:', err);
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, connection error with local FreeLLMAPI router.' }]);
-    } finally {
-      setIsTyping(false); // Stop waving 3 dots loader
-    }
+  const save = () => {
+    upsert({
+      sessionId,
+      title: disruption?.title ? `Strategy: ${decodeEntities(disruption.title)}` : `Strategy session, ${new Date().toLocaleDateString()}`,
+      messages: messages.filter((m, i) => m.content.trim() && i !== errorIndex),
+      timestamp: new Date().toISOString(),
+      disruptionId: disruption?.id ?? disruptionId ?? null,
+    });
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 2000);
   };
 
-  // 💾 Save Conversation Handler
-  const handleSaveConversation = () => {
-    setSavingChat(true);
-    try {
-      const stored = localStorage.getItem('supply_connect_chats');
-      let chats: any[] = stored ? JSON.parse(stored) : [];
-
-      const chatTitle = disruption?.title ? `Strategy: ${decodeHtmlEntities(disruption.title)}` : `Consultation Session (${new Date().toLocaleDateString()})`;
-
-      const chatPayload = {
-        sessionId: currentSessionId,
-        title: chatTitle,
-        messages: messages,
-        timestamp: new Date().toISOString(),
-        disruptionId: disruptionId || null
-      };
-
-      const existingIndex = chats.findIndex(c => c.sessionId === currentSessionId);
-      if (existingIndex >= 0) {
-        chats[existingIndex] = chatPayload;
-      } else {
-        chats.unshift(chatPayload);
-      }
-
-      localStorage.setItem('supply_connect_chats', JSON.stringify(chats));
-      window.dispatchEvent(new Event('storage'));
-
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2500);
-    } catch (e) {
-      console.error('Error saving chat:', e);
-    } finally {
-      setSavingChat(false);
-    }
-  };
+  const userHasSpoken = messages.some((m) => m.role === 'user');
+  const lastIndex = messages.length - 1;
+  const firstUserIndex = messages.findIndex((m) => m.role === 'user');
+  const action = disruption ? parseImpact(disruption.impact)[0] : undefined;
 
   return (
-    <div className="relative min-h-screen bg-neutral-950 text-neutral-100 selection:bg-emerald-500 selection:text-neutral-950 flex flex-col overflow-hidden">
-      
-      {/* Background Atmospheric Glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[350px] bg-emerald-500/10 blur-[140px] rounded-full pointer-events-none" />
-
-      {/* Top Header Bar with Glassmorphism */}
-      <div className="sticky top-0 z-30 border-b border-neutral-800/80 bg-neutral-900/70 backdrop-blur-2xl px-4 sm:px-8 py-4 shadow-xl">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/explore" className="p-2.5 rounded-xl bg-neutral-800/80 border border-neutral-700/60 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-all shadow-sm">
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-            <div>
-              <h1 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                <Lightbulb className="w-4 h-4 text-emerald-400 animate-pulse" /> Supply Chain & Strategy Advisor
-              </h1>
-              <p className="text-[11px] sm:text-xs text-neutral-400">Interactive market analysis, risk mitigation, and strategic decision support.</p>
-            </div>
-          </div>
-
-          {/* Save Conversation Button */}
-          <button
-            onClick={handleSaveConversation}
-            disabled={savingChat}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-lg ${
-              savedSuccess 
-                ? 'bg-emerald-500 text-neutral-950 font-bold shadow-emerald-500/20' 
-                : 'bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700/80'
-            }`}
-          >
-            {savedSuccess ? (
-              <>
-                <Check className="w-4 h-4" /> Saved to History!
-              </>
-            ) : (
-              <>
-                <Bookmark className="w-4 h-4 text-emerald-400" /> Save Conversation
-              </>
-            )}
-          </button>
+    <div className="flex h-[calc(100dvh-var(--topbar-h))] flex-col">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-3 sm:px-5">
+        <Link href="/explore" aria-label="Back to Disruption Radar" className="inline-grid h-9 w-9 place-items-center rounded-full text-label-2 hover:bg-surface-2 hover:text-label">
+          <ArrowLeft className="h-[18px] w-[18px]" />
+        </Link>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[15px] font-semibold tracking-[-0.01em]">Strategy Advisor</h1>
+          <p className="truncate text-[12px] text-label-3">{disruption ? decodeEntities(disruption.title) : 'Risk mitigation and opportunity planning'}</p>
         </div>
-      </div>
+        <Button variant={savedFlash ? 'primary' : 'secondary'} size="sm" onClick={save} disabled={!userHasSpoken || streaming} className="hidden sm:inline-flex">
+          {savedFlash ? <Check className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+          {savedFlash ? 'Saved' : alreadySaved ? 'Update saved' : 'Save conversation'}
+        </Button>
+        <IconButton aria-label="Save conversation" onClick={save} disabled={!userHasSpoken || streaming} className="sm:hidden">
+          {savedFlash ? <Check className="h-[18px] w-[18px] text-low" /> : <Bookmark className="h-[18px] w-[18px]" />}
+        </IconButton>
+      </header>
 
-      {/* Main Chat Area */}
-      <div className="max-w-5xl w-full mx-auto p-4 sm:p-8 flex-1 flex flex-col justify-between space-y-6 z-10">
-        
-        {/* Context Banner if Disruption attached */}
-        {disruption && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-neutral-900/90 via-neutral-900/95 to-neutral-900/90 border border-neutral-800/90 shadow-2xl backdrop-blur-xl flex items-start gap-3.5 relative overflow-hidden">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-emerald-500" />
-            <ShieldAlert className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
-            <div className="text-xs">
-              <span className="text-neutral-400 font-semibold uppercase tracking-wider text-[10px] bg-neutral-800/80 px-2 py-0.5 rounded-md border border-neutral-700/50">Active Context Signal</span>
-              <h3 className="text-white font-bold text-sm mt-1">{decodeHtmlEntities(disruption.title)}</h3>
-              <p className="text-neutral-300 mt-1 leading-relaxed">{decodeHtmlEntities(disruption.impact)}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Chat Messages Container with Visible Scroll Tube */}
-        <div className="flex-1 space-y-5 overflow-y-auto max-h-[52vh] pr-3 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-neutral-900/40 [&::-webkit-scrollbar-thumb]:bg-neutral-700 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-neutral-600">
-          {messages.map((msg, index) => (
-            <div 
-              key={index} 
-              className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
-            >
-              <div className={`max-w-2xl rounded-2xl p-4 sm:p-5 text-xs sm:text-sm leading-relaxed shadow-xl ${
-                msg.role === 'user' 
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-medium rounded-br-sm shadow-emerald-900/20' 
-                  : 'bg-neutral-900/90 border border-neutral-800/90 text-neutral-200 rounded-bl-sm backdrop-blur-md'
-              }`}>
-                {msg.role === 'user' ? msg.content : renderFormattedMessage(msg.content)}
+      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+          {disruption && (
+            <section aria-label="Signal being discussed" className="mb-10 rounded-card bg-surface p-5">
+              <div className="flex flex-wrap items-center gap-3 text-[13px]">
+                <SeverityBadge value={disruption.severity} />
+                {disruption.location && (
+                  <span className="flex items-center gap-1 text-label-3">
+                    <MapPin className="h-3.5 w-3.5" /> {decodeEntities(disruption.location)}
+                  </span>
+                )}
               </div>
-              {msg.modelUsed && (
-                <span className="text-[10px] text-neutral-500 mt-1.5 px-1.5 flex items-center gap-1 font-mono tracking-wide bg-neutral-900/50 rounded-md border border-neutral-800/50">
-                  <Cpu className="w-3 h-3 text-emerald-400" /> Model: {msg.modelUsed}
-                </span>
+              <h2 className="mt-2 text-headline">{decodeEntities(disruption.title)}</h2>
+              {action && (
+                <p className="mt-2 text-[14px] leading-relaxed text-label-2">
+                  {action.label && <span className="text-label-3">{action.label}: </span>}
+                  {action.text}
+                </p>
               )}
-            </div>
-          ))}
+            </section>
+          )}
 
-          {/* 🌊 3-Dot Waving Typing Indicator */}
-          {isTyping && (
-            <div className="flex flex-col items-start animate-fade-in">
-              <div className="bg-neutral-900/90 border border-neutral-800/90 rounded-2xl rounded-bl-sm p-4 flex items-center gap-2 shadow-xl backdrop-blur-md">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-bounce [animation-delay:-0.3s]"></span>
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-bounce [animation-delay:-0.15s]"></span>
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-bounce"></span>
-              </div>
-              <span className="text-[10px] text-neutral-500 mt-1.5 px-1.5 font-mono tracking-wide">
-                AI is generating strategy...
-              </span>
+          <div className="space-y-8">
+            {messages.map((m, i) =>
+              m.role === 'user' ? (
+                <UserBubble key={i}>{m.content}</UserBubble>
+              ) : (
+                <AssistantMessage
+                  key={i}
+                  content={m.content}
+                  error={i === errorIndex}
+                  streaming={streaming && i === lastIndex}
+                  isLast={i === lastIndex}
+                  canAct={!streaming && userHasSpoken}
+                  modelUsed={m.modelUsed}
+                  hideActions={firstUserIndex === -1 || i < firstUserIndex}
+                  onFollowup={send}
+                />
+              ),
+            )}
+          </div>
+
+          {!userHasSpoken && (
+            <div className="mt-8 flex flex-wrap gap-2 pl-[2.6rem]">
+              {STARTERS.map((s) => (
+                <button key={s} onClick={() => send(s)} className="rounded-full px-3.5 py-1.5 text-[13px] text-label-2 ring-1 ring-line transition-colors hover:bg-surface hover:text-label">
+                  {s}
+                </button>
+              ))}
             </div>
           )}
         </div>
-
-        {/* Floating Prompt Input Form */}
-        <form onSubmit={handleSendMessage} className="relative mt-auto pt-4">
-          <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-2 shadow-2xl backdrop-blur-2xl flex items-center gap-2 focus-within:border-emerald-500/60 focus-within:ring-2 focus-within:ring-emerald-500/10 transition-all">
-            <input
-              type="text"
-              placeholder="Type 'hi' or ask about market impact, risk mitigation, or strategy..."
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              className="w-full bg-transparent border-none px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none placeholder:text-neutral-500"
-            />
-            <button
-              type="submit"
-              disabled={isTyping}
-              className={`p-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-neutral-950 hover:from-emerald-400 hover:to-teal-400 transition-all shadow-md shadow-emerald-500/20 cursor-pointer shrink-0 font-bold ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
-        </form>
-
       </div>
+
+      <Composer
+        value={input}
+        onChange={setInput}
+        onSend={() => send(input)}
+        onStop={() => abortRef.current?.abort()}
+        streaming={streaming}
+        placeholder="Ask about impact, risk mitigation or strategy"
+      />
     </div>
   );
 }
 
-export default function StartupAdvisorPage() {
+export default function StrategyAdvisorPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-neutral-950 flex items-center justify-center text-emerald-400"><Loader2 className="w-8 h-8 animate-spin" /></div>}>
-      <StartupAdvisorContent />
+    <Suspense>
+      <AdvisorContent />
     </Suspense>
   );
 }
