@@ -16,6 +16,8 @@ import { RiskGauge } from '@/components/copilot/RiskGauge';
 import { CascadeFlowchart } from '@/components/copilot/CascadeFlowchart';
 import { NodeDetail } from '@/components/copilot/NodeDetail';
 import { Playbook } from '@/components/copilot/Playbook';
+import { CopilotPreview } from '@/components/copilot/CopilotPreview';
+import { SAMPLE_ANALYSIS, SAMPLE_PROFILE, SAMPLE_PROFILE_PHRASE } from '@/components/copilot/sampleAnalysis';
 
 const LOADING_STEPS = [
   'Reading the global signal',
@@ -43,6 +45,7 @@ function CopilotContent() {
   const [modelUsed, setModelUsed] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
+  const [isExample, setIsExample] = useState(false);
   const autoRan = useRef(false);
 
   /* ---------- signal context ---------- */
@@ -79,6 +82,7 @@ function CopilotContent() {
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
 
       setSubmitted(q);
+      setIsExample(false);
       setStep(0);
       setAnalyzing(true);
       setError('');
@@ -127,7 +131,17 @@ function CopilotContent() {
     router.push('/chat?from=impact');
   };
 
+  const openExample = () => {
+    setAnalysis(SAMPLE_ANALYSIS);
+    setSubmitted(SAMPLE_PROFILE);
+    setModelUsed('');
+    setSelectedId(null);
+    setIsExample(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const reset = () => {
+    setIsExample(false);
     setAnalysis(null);
     setError('');
     setProfession('');
@@ -208,6 +222,8 @@ function CopilotContent() {
         </Card>
       )}
 
+      {!analysis && !analyzing && <CopilotPreview onOpenExample={openExample} />}
+
       {/* Loading */}
       {analyzing && (
         <div className="mt-8">
@@ -235,6 +251,18 @@ function CopilotContent() {
       {/* Result */}
       {analysis && !analyzing && (
         <div className="mt-8 space-y-14">
+          <div className="space-y-4">
+          {isExample && (
+            <Card className="flex flex-col gap-3 p-5 ring-1 ring-accent/40 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[15px] text-label">
+                This is an example for {SAMPLE_PROFILE_PHRASE}.{' '}
+                <span className="text-label-2">Describe your own business to get an analysis made for you.</span>
+              </p>
+              <Button size="sm" onClick={reset} className="shrink-0">
+                Analyse my business
+              </Button>
+            </Card>
+          )}
           <Card className="grid gap-6 p-6 lg:grid-cols-[auto_1fr] lg:gap-10">
             <div className="flex justify-center lg:border-r lg:border-line lg:pr-10">
               <RiskGauge score={analysis.riskScore} />
@@ -266,6 +294,7 @@ function CopilotContent() {
               )}
             </div>
           </Card>
+          </div>
 
           <section>
             <SectionHeading title="How the shock reaches you" description="Hover a step to trace its chain. Select one to see what causes it and what it leads to." />
