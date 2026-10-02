@@ -26,6 +26,12 @@ const LOADING_STEPS = [
 
 const EXAMPLES = ['Hardware manufacturing', 'EV battery startup', 'Pharma distribution', 'D2C apparel brand'];
 
+const OUTPUTS = [
+  { title: 'Risk score', text: 'A 0–100 score for your business, plus the key numbers behind it like lead time and cost swings.' },
+  { title: 'Impact chain', text: 'A flowchart of how a global shock becomes a regional problem and then hits your own operations.' },
+  { title: 'Action playbook', text: 'What to do this week, this month and this quarter, with priorities and owners.' },
+];
+
 function CopilotContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -205,6 +211,18 @@ function CopilotContent() {
             </div>
           </form>
           {error && <InlineError className="mt-5">{error}</InlineError>}
+
+          <div className="mt-8 border-t border-line pt-6">
+            <p className="text-[13px] font-medium text-label-2">What you’ll get</p>
+            <dl className="mt-3 grid gap-5 sm:grid-cols-3">
+              {OUTPUTS.map((o) => (
+                <div key={o.title}>
+                  <dt className="text-[14px] font-medium text-label">{o.title}</dt>
+                  <dd className="mt-1 text-[13px] leading-relaxed text-label-2">{o.text}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </Card>
       )}
 
