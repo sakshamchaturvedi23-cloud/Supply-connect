@@ -7,7 +7,17 @@ const MODELS = ['auto'];
 
 type InMsg = { role: 'user' | 'assistant'; content: string };
 type RawMsg = { role?: unknown; sender?: unknown; content?: unknown; text?: unknown };
-type DisruptionContext = { title?: string; category?: string; location?: string; impact?: string };
+type DisruptionContext = {
+  title?: string;
+  category?: string;
+  location?: string;
+  impact?: string;
+  description?: string;
+  headline?: string;
+  riskScore?: number | string;
+  invalid?: boolean;
+  [key: string]: unknown;
+};
 
 function sanitize(raw: unknown): InMsg[] {
   if (!Array.isArray(raw)) return [];
@@ -25,11 +35,78 @@ function sanitize(raw: unknown): InMsg[] {
     .filter(Boolean) as InMsg[];
 }
 
+/* ---------------- Helpers ---------------- */
+
+// Clamp + clean any string before it goes inside the system prompt
+function clamp(v: unknown, max = 300): string {
+  return typeof v === 'string' ? v.replace(/[\r\n]+/g, ' ').trim().slice(0, max) : '';
+}
+
+// Word-boundary keyword match (avoids "ai" matching "retail", "port" matching "report")
+function hasWord(text: string, words: string[]): boolean {
+  return words.some((w) => new RegExp(`\\b${w}\\b`, 'i').test(text));
+}
+
+const INVALID_MARKERS = ['invalid business input', 'invalid business', 'invalid impact'];
+
+function looksInvalid(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false;
+  const p = payload as Record<string, any>;
+
+  // 1) explicit flags / score
+  if (p.invalid === true || p.isInvalid === true) return true;
+  if (p.riskScore !== undefined && p.riskScore !== null && Number(p.riskScore) === 0) return true;
+
+  // 2) marker text anywhere inside the payload
+  try {
+    const flat = JSON.stringify(p).toLowerCase();
+    if (INVALID_MARKERS.some((m) => flat.includes(m))) return true;
+  } catch {
+    /* circular or unserializable, ignore */
+  }
+
+  // 3) levels exist but every level has zero nodes = empty analysis
+  const levels = p.levels;
+  if (levels && typeof levels === 'object') {
+    const lv = [levels.macro, levels.regional, levels.direct];
+    const allEmpty = lv.every((l) => !Array.isArray(l?.nodes) || l.nodes.length === 0);
+    if (allEmpty) return true;
+  }
+  return false;
+}
+
+function isInvalidImpact(body: Record<string, any>, lastUserMessage: string): boolean {
+  const payloads = [body?.disruptionContext, body?.impactContext, body?.impactAnalysis, body?.analysis];
+  if (payloads.some(looksInvalid)) return true;
+  return lastUserMessage.toLowerCase().includes('invalid business input');
+}
+
+function guardrailResponse(reply: string, wantStream: boolean) {
+  if (wantStream) {
+    return new Response(reply, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Model-Used': 'guardrail',
+      },
+    });
+  }
+  return NextResponse.json({ success: true, reply, modelUsed: 'guardrail' });
+}
+
+const INVALID_REPLY =
+  "⚠️ **Invalid Impact Report Attached**\n\nThe attached Impact Copilot report is based on an invalid or empty business input, so there is nothing real to build an action plan on.\n\nPlease go back to **Impact Copilot**, describe a valid industry, product, project, or business (e.g., *'EV battery startup'*, *'small bakery'*, *'freelance designer'*), and attach that new analysis here. I'll turn it into a prioritized plan right away.";
+
+const INVALID_CONTEXT_RULE = `
+- INVALID CONTEXT RULE: If the attached Impact Copilot data is empty, has riskScore 0, is titled "Invalid Business Input", or contains no real risk nodes, do NOT invent risks, levels, or an action plan. Reply briefly that the report has no usable data and ask the user to describe a valid business, project, or situation first.`;
+
+/* ---------------- Route ---------------- */
+
 export async function POST(req: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
 
-  let body: { messages?: unknown; disruptionContext?: DisruptionContext; stream?: boolean };
+  let body: Record<string, any>;
   try {
     body = await req.json();
   } catch {
@@ -37,54 +114,68 @@ export async function POST(req: Request) {
   }
 
   const messages = sanitize(body?.messages);
-  const disruptionContext = body?.disruptionContext;
+  const disruptionContext = body?.disruptionContext as DisruptionContext | undefined;
   const wantStream = body?.stream === true;
 
   if (!messages.length || messages[messages.length - 1].role !== 'user') {
     return NextResponse.json({ success: false, error: 'Last message must be from the user' }, { status: 400 });
   }
 
-  // 1. Supply AI ke liye General Prompt (Jab koi card select nahi hai - Friendly & Conversational)
-  const GENERAL_SUPPLY_AI_PROMPT = `You are Supply AI, a sharp supply-chain and macro-intelligence advisor. 
-- Friendly Greeting Rule: When the user says casual greetings like "hi", "hello", or "how are you", respond warmly and naturally in 1-2 lines, asking what they would like to discuss regarding market volatility, logistics, or global supply chain disruptions. Never throw rigid error messages or complain about missing disruption cards.
-- General Expertise: Maintain an expert, conversational tone on supply chain risks, market trends, and logistics when answering general queries.`;
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[chat] body keys:', Object.keys(body), '| context keys:', Object.keys(disruptionContext ?? {}));
+  }
 
-  // 2. Strategy Advisor ke liye Smart & Context-Aware Prompt (Jab Disruption Radar se specific article/card select hai)
+  // --- GUARDRAIL: never generate plans for invalid / empty Impact reports ---
+  if (isInvalidImpact(body, messages[messages.length - 1].content)) {
+    return guardrailResponse(INVALID_REPLY, wantStream);
+  }
+
+  // 1. General prompt (no card selected: friendly & conversational)
+  const GENERAL_SUPPLY_AI_PROMPT = `You are Supply AI, a sharp supply-chain and macro-intelligence advisor.
+- Friendly Greeting Rule: When the user says casual greetings like "hi", "hello", or "how are you", respond warmly and naturally in 1-2 lines, asking what they would like to discuss regarding market volatility, logistics, or global supply chain disruptions. Never throw rigid error messages or complain about missing disruption cards.
+- General Expertise: Maintain an expert, conversational tone on supply chain risks, market trends, and logistics when answering general queries.${INVALID_CONTEXT_RULE}`;
+
+  // 2. Strategy Advisor prompt (a Disruption Radar card / Impact report is attached)
   let systemPrompt = '';
   if (disruptionContext && disruptionContext.title) {
-    const category = disruptionContext.category || 'General';
-    const location = disruptionContext.location || 'Global';
-    const impact = disruptionContext.impact || 'Assess strategic and operational exposure.';
-    const titleLower = (disruptionContext.title + ' ' + category).toLowerCase();
+    const title = clamp(disruptionContext.title);
+    const category = clamp(disruptionContext.category) || 'General';
+    const location = clamp(disruptionContext.location) || 'Global';
+    const impact = clamp(disruptionContext.impact) || 'Assess strategic and operational exposure.';
+    const titleLower = `${title} ${category}`.toLowerCase();
 
     let customDirective = '';
     let domainFocus = 'Macro-Intelligence & Strategy';
 
-    // Smart Domain Detection based on Card Title/Category (Avoids forcing logistics/raw materials onto finance or workforce news)
-    if (titleLower.includes('ipo') || titleLower.includes('rbi') || titleLower.includes('sebi') || titleLower.includes('stocks') || titleLower.includes('shares') || titleLower.includes('private') || titleLower.includes('rejig') || titleLower.includes('valuation') || titleLower.includes('financial')) {
+    if (hasWord(titleLower, ['ipo', 'rbi', 'sebi', 'stocks', 'shares', 'private', 'rejig', 'valuation', 'financial'])) {
       domainFocus = 'Corporate Governance, Financial Markets & Regulatory Compliance';
-      customDirective = 'Focus on capital structure, regulatory compliance (RBI/SEBI rules), shareholder impact, valuation shifts, and corporate restructuring strategies rather than physical supply chains.';
-    } else if (titleLower.includes('layoff') || titleLower.includes('job') || titleLower.includes('workforce') || titleLower.includes('hiring') || titleLower.includes('employment') || titleLower.includes('salary')) {
+      customDirective =
+        'Focus on capital structure, regulatory compliance (RBI/SEBI rules), shareholder impact, valuation shifts, and corporate restructuring strategies rather than physical supply chains.';
+    } else if (hasWord(titleLower, ['layoff', 'layoffs', 'job', 'jobs', 'workforce', 'hiring', 'employment', 'salary'])) {
       domainFocus = 'Workforce Dynamics, Talent & Operational Restructuring';
-      customDirective = 'Focus on labor market shifts, talent retention, re-skilling, operational cost optimization, and AI/automation substitution impact.';
-    } else if (titleLower.includes('shipping') || titleLower.includes('port') || titleLower.includes('freight') || titleLower.includes('logistics') || titleLower.includes('transit')) {
+      customDirective =
+        'Focus on labor market shifts, talent retention, re-skilling, operational cost optimization, and AI/automation substitution impact.';
+    } else if (hasWord(titleLower, ['shipping', 'port', 'ports', 'freight', 'logistics', 'transit'])) {
       domainFocus = 'Logistics & Supply Chain Operations';
-      customDirective = 'Focus heavily on shipping lanes, freight bottlenecks, alternative transport routes, and warehouse buffer stocking.';
-    } else if (titleLower.includes('tech') || titleLower.includes('cyber') || titleLower.includes('software') || titleLower.includes('ai') || titleLower.includes('hardware')) {
+      customDirective =
+        'Focus heavily on shipping lanes, freight bottlenecks, alternative transport routes, and warehouse buffer stocking.';
+    } else if (hasWord(titleLower, ['tech', 'cyber', 'software', 'ai', 'hardware'])) {
       domainFocus = 'Technology & Cybersecurity Dependencies';
-      customDirective = 'Focus deeply on hardware/software shortages, vendor tech dependencies, data security, and digital infrastructure resilience.';
+      customDirective =
+        'Focus deeply on hardware/software shortages, vendor tech dependencies, data security, and digital infrastructure resilience.';
     } else {
       domainFocus = 'Strategic Risk & Market Volatility';
-      customDirective = 'Focus on strategic realignment, market positioning, risk mitigation, and operational adaptability.';
+      customDirective =
+        'Focus on strategic realignment, market positioning, risk mitigation, and operational adaptability.';
     }
 
-    systemPrompt = `You are Supply AI acting as a specialized Strategy Advisor focused on ${domainFocus}. 
-- MANDATORY CONTEXT ANCHOR: You are operating for a specific live disruption card chosen by the user. 
+    systemPrompt = `You are Supply AI acting as a specialized Strategy Advisor focused on ${domainFocus}.
+- MANDATORY CONTEXT ANCHOR: You are operating for a specific live disruption card chosen by the user.
 - CORE RULE: Analyze the disruption based on its true nature (e.g., if it's about finance/IPO/regulations, talk about markets, compliance, and corporate strategy; if it's about jobs, talk about workforce; if it's logistics, talk about supply). NEVER force unrelated physical supply-chain jargon onto corporate, financial, or workforce topics.
-- STRUCTURE: Every response must clearly feature the Disruption, Impact, and Opportunity/Action plan.
+- STRUCTURE: Every response must clearly feature the Disruption, Impact, and Opportunity/Action plan.${INVALID_CONTEXT_RULE}
 
 ACTIVE DISRUPTION CONTEXT:
-- Title: "${disruptionContext.title}" (Category: ${category}, Location: ${location})
+- Title: "${title}" (Category: ${category}, Location: ${location})
 - Core Directive: ${impact}
 - Domain Rule: ${customDirective}`;
   } else {
@@ -128,7 +219,10 @@ ACTIVE DISRUPTION CONTEXT:
 
   if (!upstream || !upstream.body) {
     console.error('All chat models failed or body is missing', errors);
-    return NextResponse.json({ success: false, error: 'All models failed or missing body', details: errors }, { status: 502 });
+    return NextResponse.json(
+      { success: false, error: 'All models failed or missing body', details: errors },
+      { status: 502 },
+    );
   }
 
   const upstreamIsJson = (upstream.headers.get('content-type') ?? '').includes('application/json');
@@ -195,4 +289,5 @@ ACTIVE DISRUPTION CONTEXT:
   if (cut !== -1) reply = reply.slice(0, cut).trimEnd();
   return NextResponse.json({ success: true, reply: reply || 'I am ready to assist you.', modelUsed });
 }
+
 
