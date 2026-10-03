@@ -24,11 +24,13 @@ Schema:
 Node = { "id": string, "title": string (max 6 words), "detail": string (max 30 words), "severity": "critical" | "high" | "medium" | "low" }
 
 Rules:
+- CRITICAL VALIDATION: First evaluate if the user's input describes a real business, industry, product, service, or project. If the input is casual conversation (e.g. "how are you", "hi"), gibberish, or not a business description, set riskScore to 0, headline to "Invalid Business Input", exposure to "Please enter a valid industry, product, or business description (e.g. EV battery startup).", and return empty arrays for levels nodes, links, playbook, and metrics.
 - Node ids: macro m1..m3, regional r1..r4, direct d1..d4. 2-4 nodes per level.
 - Links only go macro -> regional or regional -> direct. Every regional and direct node needs at least one incoming link.
 - Playbook: exactly 3 phases — "Immediate" (0-7 days), "Short-term" (2-6 weeks), "Strategic" (1-6 months) — with 2-4 actions each.
 - Metrics: exactly 4 short quantitative indicators, e.g. { "label": "Lead time", "value": "+3-5 wks", "trend": "up" }.
 - Be concrete and specific to the user's profession. No generic filler.`;
+
 
 const MODELS = (process.env.IMPACT_MODELS ?? 'auto')
   .split(',')
