@@ -9,7 +9,6 @@ import {
   CATEGORIES,
   CategoryKey,
   Disruption,
-  PER_CATEGORY,
   SEVERITY_LABEL,
   SEVERITY_ORDER,
   bySeverityThenDate,
@@ -30,7 +29,6 @@ import { DailyBrief } from '@/components/radar/DailyBrief';
 
 type Filter = 'all' | CategoryKey;
 type Item = Disruption & { bucket: CategoryKey };
-const PER_CATEGORY_IN_ALL = 3;
 
 function RadarContent() {
   const highlightId = useSearchParams().get('highlight');
@@ -42,12 +40,14 @@ function RadarContent() {
 
   /* ---------- derived data ---------- */
 
-  // `data` arrives already shuffled, so every load/sync/shuffle deals a different set of cards.
   const items: Item[] = useMemo(() => data.map((d) => ({ ...d, bucket: categorize(d) })), [data]);
 
+  // Individual categories mein max 12 cards restrict karne ke liye
   const buckets = useMemo(() => {
     const b = Object.fromEntries(CATEGORIES.map((c) => [c.key, [] as Item[]])) as Record<CategoryKey, Item[]>;
-    for (const i of items) if (b[i.bucket].length < PER_CATEGORY) b[i.bucket].push(i);
+    for (const i of items) {
+      if (b[i.bucket].length < 12) b[i.bucket].push(i);
+    }
     return b;
   }, [items]);
 
@@ -61,11 +61,9 @@ function RadarContent() {
     } else if (filter !== 'all') {
       list = buckets[filter];
     } else {
-      // Balanced mix: a few random signals from every sector.
-      list = [];
-      for (let r = 0; r < PER_CATEGORY_IN_ALL; r++) {
-        for (const c of CATEGORIES) if (buckets[c.key][r]) list.push(buckets[c.key][r]);
-      }
+      // All sectors ke liye: Shuffled order mein max 48 cards
+      const shuffled = [...items].sort(() => 0.5 - Math.random());
+      list = shuffled.slice(0, 48);
     }
     if (highlightId && !q) {
       const target = items.find((i) => i.id === highlightId);
@@ -77,17 +75,16 @@ function RadarContent() {
   const stats = useMemo(() => {
     const counts = { critical: 0, high: 0, medium: 0, low: 0 };
     for (const i of items) counts[severityOf(i.severity)]++;
-    // The top signal is always the most severe one, regardless of shuffle order.
     const top = items.reduce<Item | undefined>((best, i) => (!best || bySeverityThenDate(i, best) < 0 ? i : best), undefined);
     return { total: items.length, counts, urgent: counts.critical + counts.high, top };
   }, [items]);
 
   const filterOptions = useMemo(
     () => [
-      { value: 'all' as Filter, label: 'All sectors', count: items.length },
-      ...CATEGORIES.map((c) => ({ value: c.key as Filter, label: c.short, count: items.filter((i) => i.bucket === c.key).length })),
+      { value: 'all' as Filter, label: 'All sectors', count: Math.min(items.length, 48) },
+      ...CATEGORIES.map((c) => ({ value: c.key as Filter, label: c.short, count: buckets[c.key].length })),
     ],
-    [items],
+    [items, buckets],
   );
 
   /* ---------- highlight when arriving from a saved signal ---------- */
@@ -226,3 +223,4 @@ export default function RadarPage() {
     </Suspense>
   );
 }
+

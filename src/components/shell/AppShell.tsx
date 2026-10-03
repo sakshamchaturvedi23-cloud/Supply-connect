@@ -94,8 +94,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         Skip to content
       </a>
 
-      {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-line bg-canvas px-3 py-5 md:flex">
+      {/* Desktop sidebar - Width badhakar w-64 kar di hai */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-line bg-canvas px-3 py-5 md:flex">
         <div className="px-2.5 pb-6">
           <Logo />
         </div>
@@ -145,7 +145,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <main id="main" className="md:pl-60">
+      {/* Main content padding match kar diya hai md:pl-64 se */}
+      <main id="main" className="md:pl-64">
         {children}
       </main>
 
@@ -153,3 +154,4 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+

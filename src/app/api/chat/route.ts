@@ -3,39 +3,10 @@ import { requireUser } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
-const BASE_SYSTEM_PROMPT = `You are Supply AI, a sharp supply-chain and market-intelligence advisor inside the Supply Connect app.
-
-Your replies are rendered as GitHub-flavored markdown in a clean chat UI. Write like a senior consultant, not a report generator:
-- SPECIAL RULE FOR GREETINGS: If the user sends a casual greeting like "hi", "hello", or "hey" (without a specific question), respond warmly, naturally, and in a generalized way (e.g., asking how you can assist with operations, logistics, strategy, or business queries today). Do not sound robotic.
-- For actual questions, open with a direct 1-3 sentence answer. No preamble ("Great question").
-- Use "##" headings only when the answer has 3+ distinct parts. Max 4 headings. No emojis anywhere.
-- Prefer short bullet lists. Use a table ONLY to compare items across 2-4 short attributes; cells under 12 words; never paragraphs inside cells.
-- Bold only the key term of a bullet. Do not bold whole sentences.
-- Never use horizontal rules (---).
-- Match length to the question: simple question under 120 words; a plan or strategy under 400 words unless the user asks for more depth.
-- When the user attaches an Impact Copilot analysis or disruption context, do NOT restate it. Build on it: reference node names and chains and prioritise actions by severity.
-- Be concrete: name numbers, timeframes, owners, suppliers or regions where possible.
-
-End EVERY reply with this exact line and nothing after it:
-<followups>["question 1","question 2","question 3"]</followups>
-containing 2-3 short follow-up questions (max 8 words each) the user is likely to ask next.`;
-
-
-const MODELS = [
-  'auto',
-  'llama-3.1-70b-versatile',
-  'gemini-2.5-flash',
-  'llama-3.1-8b-instant',
-  ...(process.env.CHAT_MODELS ?? process.env.IMPACT_MODELS ?? 'openai/gpt-4o-mini')
-    .split(',')
-    .map((m) => m.trim())
-    .filter(Boolean)
-];
+const MODELS = ['auto'];
 
 type InMsg = { role: 'user' | 'assistant'; content: string };
-
 type RawMsg = { role?: unknown; sender?: unknown; content?: unknown; text?: unknown };
-
 type DisruptionContext = { title?: string; category?: string; location?: string; impact?: string };
 
 function sanitize(raw: unknown): InMsg[] {
@@ -73,25 +44,55 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: 'Last message must be from the user' }, { status: 400 });
   }
 
-  let systemPrompt = BASE_SYSTEM_PROMPT;
+  // 1. Supply AI ke liye General Prompt (Jab koi card select nahi hai - Friendly & Conversational)
+  const GENERAL_SUPPLY_AI_PROMPT = `You are Supply AI, a sharp supply-chain and macro-intelligence advisor. 
+- Friendly Greeting Rule: When the user says casual greetings like "hi", "hello", or "how are you", respond warmly and naturally in 1-2 lines, asking what they would like to discuss regarding market volatility, logistics, or global supply chain disruptions. Never throw rigid error messages or complain about missing disruption cards.
+- General Expertise: Maintain an expert, conversational tone on supply chain risks, market trends, and logistics when answering general queries.`;
+
+  // 2. Strategy Advisor ke liye Smart & Context-Aware Prompt (Jab Disruption Radar se specific article/card select hai)
+  let systemPrompt = '';
   if (disruptionContext && disruptionContext.title) {
-    const category = disruptionContext.category || 'Logistics';
+    const category = disruptionContext.category || 'General';
     const location = disruptionContext.location || 'Global';
-    const impact = disruptionContext.impact || 'Monitor lead times and buffer inventory.';
+    const impact = disruptionContext.impact || 'Assess strategic and operational exposure.';
+    const titleLower = (disruptionContext.title + ' ' + category).toLowerCase();
 
     let customDirective = '';
-    if (category.toLowerCase().includes('logistics')) {
+    let domainFocus = 'Macro-Intelligence & Strategy';
+
+    // Smart Domain Detection based on Card Title/Category (Avoids forcing logistics/raw materials onto finance or workforce news)
+    if (titleLower.includes('ipo') || titleLower.includes('rbi') || titleLower.includes('sebi') || titleLower.includes('stocks') || titleLower.includes('shares') || titleLower.includes('private') || titleLower.includes('rejig') || titleLower.includes('valuation') || titleLower.includes('financial')) {
+      domainFocus = 'Corporate Governance, Financial Markets & Regulatory Compliance';
+      customDirective = 'Focus on capital structure, regulatory compliance (RBI/SEBI rules), shareholder impact, valuation shifts, and corporate restructuring strategies rather than physical supply chains.';
+    } else if (titleLower.includes('layoff') || titleLower.includes('job') || titleLower.includes('workforce') || titleLower.includes('hiring') || titleLower.includes('employment') || titleLower.includes('salary')) {
+      domainFocus = 'Workforce Dynamics, Talent & Operational Restructuring';
+      customDirective = 'Focus on labor market shifts, talent retention, re-skilling, operational cost optimization, and AI/automation substitution impact.';
+    } else if (titleLower.includes('shipping') || titleLower.includes('port') || titleLower.includes('freight') || titleLower.includes('logistics') || titleLower.includes('transit')) {
+      domainFocus = 'Logistics & Supply Chain Operations';
       customDirective = 'Focus heavily on shipping lanes, freight bottlenecks, alternative transport routes, and warehouse buffer stocking.';
-    } else if (category.toLowerCase().includes('technology') || category.toLowerCase().includes('cyber')) {
-      customDirective = 'Focus deeply on hardware/software shortages, vendor tech dependencies, and cybersecurity protocols.';
+    } else if (titleLower.includes('tech') || titleLower.includes('cyber') || titleLower.includes('software') || titleLower.includes('ai') || titleLower.includes('hardware')) {
+      domainFocus = 'Technology & Cybersecurity Dependencies';
+      customDirective = 'Focus deeply on hardware/software shortages, vendor tech dependencies, data security, and digital infrastructure resilience.';
     } else {
-      customDirective = 'Focus on raw material sourcing, supplier diversification, and financial hedging strategies.';
+      domainFocus = 'Strategic Risk & Market Volatility';
+      customDirective = 'Focus on strategic realignment, market positioning, risk mitigation, and operational adaptability.';
     }
 
-    systemPrompt += `\n\nACTIVE DISRUPTION CONTEXT:\n- Title: "${disruptionContext.title}" (Category: ${category}, Location: ${location})\n- Directive: ${impact}\n- Rule: ${customDirective}`;
+    systemPrompt = `You are Supply AI acting as a specialized Strategy Advisor focused on ${domainFocus}. 
+- MANDATORY CONTEXT ANCHOR: You are operating for a specific live disruption card chosen by the user. 
+- CORE RULE: Analyze the disruption based on its true nature (e.g., if it's about finance/IPO/regulations, talk about markets, compliance, and corporate strategy; if it's about jobs, talk about workforce; if it's logistics, talk about supply). NEVER force unrelated physical supply-chain jargon onto corporate, financial, or workforce topics.
+- STRUCTURE: Every response must clearly feature the Disruption, Impact, and Opportunity/Action plan.
+
+ACTIVE DISRUPTION CONTEXT:
+- Title: "${disruptionContext.title}" (Category: ${category}, Location: ${location})
+- Core Directive: ${impact}
+- Domain Rule: ${customDirective}`;
+  } else {
+    systemPrompt = GENERAL_SUPPLY_AI_PROMPT;
   }
 
-  const apiUrl = process.env.LLM_API_URL ?? 'http://localhost:3001/v1/chat/completions';
+  const gatewayUrl = process.env.NEXT_PUBLIC_AI_GATEWAY_URL || process.env.LLM_API_URL || 'http://localhost:3001/v1';
+  const apiUrl = `${gatewayUrl.replace(/\/$/, '')}/chat/completions`;
   const apiKey = process.env.FREELLM_API_KEY || process.env.LLM_API_KEY;
 
   let upstream: Response | null = null;
@@ -130,7 +131,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: 'All models failed or missing body', details: errors }, { status: 502 });
   }
 
-  // Some routers ignore `stream: true` and answer with plain JSON — handle that below.
   const upstreamIsJson = (upstream.headers.get('content-type') ?? '').includes('application/json');
 
   if (wantStream && !upstreamIsJson) {
@@ -183,7 +183,6 @@ export async function POST(req: Request) {
     });
   }
 
-  // Non-streaming: read the body once, then parse.
   const raw = await upstream.text();
   let reply = raw;
   try {
@@ -196,3 +195,4 @@ export async function POST(req: Request) {
   if (cut !== -1) reply = reply.slice(0, cut).trimEnd();
   return NextResponse.json({ success: true, reply: reply || 'I am ready to assist you.', modelUsed });
 }
+

@@ -40,7 +40,10 @@ function normalize(raw: unknown, ids: Set<string>): DailyBrief | null {
 }
 
 async function callModel(model: string, userPrompt: string): Promise<string> {
-  const res = await fetch(process.env.LLM_API_URL ?? 'http://localhost:3001/v1/chat/completions', {
+  const gatewayUrl = process.env.NEXT_PUBLIC_AI_GATEWAY_URL || process.env.LLM_API_URL || 'https://freellmapi-backend-ldf9.onrender.com/v1';
+  const apiUrl = `${gatewayUrl.replace(/\/$/, '')}/chat/completions`;
+
+  const res = await fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -62,6 +65,7 @@ async function callModel(model: string, userPrompt: string): Promise<string> {
   if (typeof text !== 'string' || !text.trim()) throw new Error(`${model}: empty response`);
   return text;
 }
+
 
 export async function POST(req: Request) {
   const auth = await requireUser();
