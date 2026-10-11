@@ -10,7 +10,7 @@ const STALE_MS = 60 * 1000;
 /* Module-level cache: navigating between pages reuses data instantly. */
 let cache: { data: Disruption[]; at: number } | null = null;
 let inflightLoad: Promise<Disruption[]> | null = null;
-let inflightSync: Promise<void> | null = null;
+let inflightSync: Promise<{ success: boolean; error?: string }> | null = null;
 
 function load(force = false): Promise<Disruption[]> {
   if (!force && cache && Date.now() - cache.at < STALE_MS) return Promise.resolve(cache.data);
@@ -30,15 +30,23 @@ function load(force = false): Promise<Disruption[]> {
 }
 
 /** Calls the ingest API. Only one sync can run at a time across the whole app. */
-function runSync(): Promise<void> {
+function runSync(): Promise<{ success: boolean; error?: string }> {
   if (!inflightSync) {
     inflightSync = fetch('/api/ingest', { cache: 'no-store' })
-      .then(() => {
+      .then(async (res) => {
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          return { success: false, error: body?.error ?? `HTTP ${res.status}` };
+        }
         try {
           localStorage.setItem(STORAGE_KEYS.lastSync, String(Date.now()));
         } catch {
           /* ignore */
         }
+        return { success: true };
+      })
+      .catch((err) => {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
       })
       .finally(() => {
         inflightSync = null;
@@ -62,6 +70,7 @@ export function useDisruptions({ autoSync = false }: { autoSync?: boolean } = {}
   const [data, setData] = useState<Disruption[]>(() => cache?.data ?? []);
   const [status, setStatus] = useState<Status>(() => (cache ? 'ready' : 'loading'));
   const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
 
   const reload = useCallback(async (force = false) => {
@@ -76,13 +85,22 @@ export function useDisruptions({ autoSync = false }: { autoSync?: boolean } = {}
 
   const sync = useCallback(async () => {
     setSyncing(true);
+    setSyncError(null);
     try {
-      await runSync();
+      const res = await runSync();
+      if (!res.success && res.error) {
+        if (res.error.toLowerCase().includes('not signed in')) {
+          setSyncError('Sign in required to trigger news sync.');
+        } else {
+          setSyncError(res.error);
+        }
+      } else {
+        setLastSyncedAt(Date.now());
+      }
     } catch (e) {
       console.error('Sync failed', e);
     }
     await reload(true);
-    setLastSyncedAt(Date.now());
     setSyncing(false);
   }, [reload]);
 
@@ -113,5 +131,5 @@ export function useDisruptions({ autoSync = false }: { autoSync?: boolean } = {}
     setData(next);
   }, [data]);
 
-  return { data, status, syncing, sync, reload, shuffle, lastSyncedAt };
+  return { data, status, syncing, sync, syncError, reload, shuffle, lastSyncedAt };
 }

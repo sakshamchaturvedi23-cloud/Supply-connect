@@ -2,15 +2,9 @@ import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getSupabaseAnonKey, getSupabaseUrl, isDevAuthBypass, isSupabaseConfigured } from '@/lib/supabase/env';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-async function analyzeArticleWithAI(title, description) {
+async function analyzeArticleWithAI(genAI, title, description) {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
@@ -93,6 +87,32 @@ export async function GET() {
   const auth = await requireUser();
   if (auth.response) return auth.response;
 
+  if (!isSupabaseConfigured()) {
+    if (isDevAuthBypass()) {
+      return NextResponse.json({
+        success: true,
+        message: 'Local development demo mode: signals served from curated reference data (0 remote rows inserted).',
+        count: 16,
+        demo: true,
+      });
+    }
+
+    return NextResponse.json(
+      { success: false, error: 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local.' },
+      { status: 503 }
+    );
+  }
+
+  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY.includes('placeholder')) {
+    return NextResponse.json(
+      { success: false, error: 'GEMINI_API_KEY is not configured in .env.local. Please configure Gemini API key to ingest live news.' },
+      { status: 503 }
+    );
+  }
+
+  const supabase = createClient(getSupabaseUrl(), getSupabaseAnonKey());
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
   try {
     const feedUrls = [
       'https://techcrunch.com/feed/',
@@ -149,7 +169,7 @@ export async function GET() {
         const { data: existing } = await supabase.from('disruptions').select('id').eq('title', title).single();
         if (existing) return;
 
-        const aiInsights = await analyzeArticleWithAI(title, description);
+        const aiInsights = await analyzeArticleWithAI(genAI, title, description);
 
         if (!aiInsights || !aiInsights.is_disruption) {
           return; // Skip non-disruptions instantly

@@ -12,6 +12,6 @@ export const config = {
      * Everything except Next internals and static files.
      * (Pages and /api/* are both covered; auth logic lives in lib/supabase/proxy.ts.)
      */
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|txt|woff2?)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4|webm|css|js|map|txt|woff2?)$).*)',
   ],
 };

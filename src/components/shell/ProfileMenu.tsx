@@ -3,11 +3,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LogOut, User as UserIcon } from 'lucide-react';
-import { displayName, initials, signOut, useAuthUser } from '@/lib/auth';
+import { displayName, initials, isBypassUser, signOut, useAuthUser } from '@/lib/auth';
 import { Spinner } from '@/components/ui/Feedback';
 import { cn } from '@/components/ui/cn';
 
-/** Avatar button with an account dropdown (signed-in user, Log out). */
+/** Avatar button with an account dropdown in monochrome liquid glass. */
 export function ProfileMenu({ className }: { className?: string }) {
   const router = useRouter();
   const { user } = useAuthUser();
@@ -42,9 +42,16 @@ export function ProfileMenu({ className }: { className?: string }) {
 
   const name = displayName(user);
   const letters = initials(user);
+  const isBypass = isBypassUser(user);
+
   const avatar = (size: string) => (
-    <span className={cn('grid shrink-0 place-items-center rounded-full bg-surface-3 font-semibold text-label', size)}>
-      {letters || <UserIcon className="h-[55%] w-[55%] text-label-2" strokeWidth={1.8} />}
+    <span
+      className={cn(
+        'grid shrink-0 place-items-center rounded-full font-medium border border-white/20 bg-white/10 text-white',
+        size
+      )}
+    >
+      {letters || <UserIcon className="h-[55%] w-[55%] text-white/70" strokeWidth={1.8} />}
     </span>
   );
 
@@ -56,31 +63,52 @@ export function ProfileMenu({ className }: { className?: string }) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account menu for ${name}`}
-        className="rounded-full ring-1 ring-line transition-shadow hover:ring-line-strong"
+        className="rounded-full transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-white/60"
       >
-        {avatar('h-9 w-9 text-[13px]')}
+        {avatar('h-8 w-8 text-xs')}
       </button>
 
       {open && (
-        <div role="menu" aria-label="Account" className="absolute right-0 top-11 z-50 w-64 overflow-hidden rounded-2xl bg-surface-2 p-1.5 shadow-2xl ring-1 ring-line">
-          <div className="flex items-center gap-3 px-2.5 py-2.5">
-            {avatar('h-10 w-10 text-[14px]')}
-            <div className="min-w-0">
-              <p className="truncate text-[14px] font-medium text-label">{name}</p>
-              <p className="truncate text-[12px] text-label-3">{user?.email ?? 'Not signed in'}</p>
+        <div
+          role="menu"
+          aria-label="Account"
+          className="absolute right-0 top-11 z-50 w-64 rounded-2xl liquid-glass-strong p-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+        >
+          <div className="flex items-center gap-3 px-3 py-2.5">
+            {avatar('h-9 w-9 text-xs')}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold text-white">{name}</p>
+              <p className="truncate text-[11px] text-white/60">{user?.email ?? 'Not signed in'}</p>
+              {isBypass && (
+                <span className="mt-1 inline-flex items-center gap-1 rounded border border-white/20 bg-white/10 px-1.5 py-0.5 text-[10px] font-mono text-white/80">
+                  ⚡ Dev Auth Active
+                </span>
+              )}
             </div>
           </div>
-          <div className="my-1 h-px bg-line" />
-          <button
-            ref={firstItemRef}
-            role="menuitem"
-            onClick={handleSignOut}
-            disabled={signingOut}
-            className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[14px] text-critical transition-colors hover:bg-critical/10 focus-visible:bg-critical/10 disabled:opacity-60"
-          >
-            {signingOut ? <Spinner className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
-            Log out
-          </button>
+          <div className="my-1.5 h-px bg-white/[0.08]" />
+          {user ? (
+            <button
+              ref={firstItemRef}
+              role="menuitem"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
+            >
+              {signingOut ? <Spinner className="h-3.5 w-3.5" /> : <LogOut className="h-3.5 w-3.5 text-white/60" />}
+              <span>{isBypass ? 'View Login Screen' : 'Log out'}</span>
+            </button>
+          ) : (
+            <a
+              href="/login"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium text-white transition-colors hover:bg-white/10"
+            >
+              <LogOut className="h-3.5 w-3.5 rotate-180 text-white/60" />
+              <span>Sign in to your account</span>
+            </a>
+          )}
         </div>
       )}
     </div>

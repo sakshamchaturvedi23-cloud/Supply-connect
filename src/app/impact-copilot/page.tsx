@@ -9,7 +9,7 @@ import { Disruption, fetchDisruption } from '@/lib/disruptions';
 import { decodeEntities } from '@/lib/text';
 import { PageContainer, PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Card, SectionHeading } from '@/components/ui/Card';
+import { SectionHeading } from '@/components/ui/Card';
 import { SeverityBadge } from '@/components/ui/Badge';
 import { InlineError, Skeleton, Spinner } from '@/components/ui/Feedback';
 import { RiskGauge } from '@/components/copilot/RiskGauge';
@@ -36,7 +36,7 @@ function CopilotContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const disruptionId = searchParams.get('id');
+  const disruptionId = searchParams.get('id') || searchParams.get('disruptionId');
   const initialQuery = searchParams.get('query');
 
   const [disruption, setDisruption] = useState<Disruption | null>(null);
@@ -101,6 +101,8 @@ function CopilotContent() {
         if (data.success && data.analysis) {
           setAnalysis(normalizeAnalysis(data.analysis));
           setModelUsed(data.modelUsed ?? '');
+        } else if (res.status === 401 || data?.error?.toLowerCase()?.includes('not signed in')) {
+          setError('Sign in is required to generate custom business impact analyses. Please sign in to continue.');
         } else {
           setError(data.error === 'All models failed' ? 'The AI models didn’t return a usable analysis. Try again in a moment.' : data.error ?? 'The analysis couldn’t be generated.');
         }
@@ -166,45 +168,45 @@ function CopilotContent() {
       />
 
       {disruption && (
-        <Card className="mt-8 flex items-start gap-4 p-5">
+        <div className="mt-8 flex items-start gap-4 p-5 rounded-2xl bg-[#0a0d14]/50 backdrop-blur-md border border-white/[0.07] shadow-2xl">
           <div className="min-w-0">
             <p className="flex flex-wrap items-center gap-3 text-[13px]">
-              <span className="text-label-3">Analysing against</span>
+              <span className="text-slate-400">Analysing against</span>
               <SeverityBadge value={disruption.severity} />
             </p>
-            <h2 className="mt-1 text-headline">{decodeEntities(disruption.title)}</h2>
+            <h2 className="mt-1 text-headline text-white font-medium">{decodeEntities(disruption.title)}</h2>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* Input */}
       {!analysis && !analyzing && (
-        <Card className="mt-8 p-6 sm:p-8">
+        <div className="mt-8 p-6 sm:p-8 rounded-2xl bg-[#0a0d14]/50 backdrop-blur-md border border-white/[0.07] shadow-2xl">
           <form
             onSubmit={(e) => {
               e.preventDefault();
               runAnalysis(profession);
             }}
           >
-            <label htmlFor="profession" className="text-title-2">
+            <label htmlFor="profession" className="text-title-2 text-white font-medium">
               What does your business do?
             </label>
-            <p className="mt-1.5 text-body text-label-2">A sentence is enough: your industry, product or the project you’re running.</p>
+            <p className="mt-1.5 text-body text-slate-300">A sentence is enough: your industry, product or the project you’re running.</p>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <input
                 id="profession"
                 value={profession}
                 onChange={(e) => setProfession(e.target.value)}
                 placeholder="e.g. We assemble e-bikes in Pune with motors from China"
-                className="h-12 min-w-0 flex-1 rounded-full bg-surface-2 px-5 text-[15px] text-label outline-none placeholder:text-label-3 focus:ring-2 focus:ring-accent/60"
+                className="h-12 min-w-0 flex-1 rounded-full bg-[#0a0d14]/60 backdrop-blur-md border border-white/[0.09] px-5 text-[15px] text-white outline-none placeholder:text-slate-400 focus:ring-1 focus:ring-white/30"
               />
-              <Button type="submit" size="lg" disabled={!profession.trim() || !contextReady}>
+              <Button type="submit" size="lg" variant="primary" disabled={!profession.trim() || !contextReady}>
                 Map my impact
               </Button>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               {EXAMPLES.map((ex) => (
-                <button key={ex} type="button" onClick={() => setProfession(ex)} className="rounded-full px-3 py-1.5 text-[13px] text-label-2 ring-1 ring-line transition-colors hover:bg-surface-2 hover:text-label">
+                <button key={ex} type="button" onClick={() => setProfession(ex)} className="rounded-full px-3.5 py-1.5 text-[13px] text-slate-300 bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 transition-all hover:text-white">
                   {ex}
                 </button>
               ))}
@@ -212,38 +214,38 @@ function CopilotContent() {
           </form>
           {error && <InlineError className="mt-5">{error}</InlineError>}
 
-          <div className="mt-8 border-t border-line pt-6">
-            <p className="text-[13px] font-medium text-label-2">What you’ll get</p>
+          <div className="mt-8 border-t border-white/[0.07] pt-6">
+            <p className="text-xs uppercase tracking-wider text-slate-400 font-medium font-mono">What you’ll get</p>
             <dl className="mt-3 grid gap-5 sm:grid-cols-3">
               {OUTPUTS.map((o) => (
                 <div key={o.title}>
-                  <dt className="text-[14px] font-medium text-label">{o.title}</dt>
-                  <dd className="mt-1 text-[13px] leading-relaxed text-label-2">{o.text}</dd>
+                  <dt className="text-[14px] font-medium text-white">{o.title}</dt>
+                  <dd className="mt-1 text-[13px] leading-relaxed text-slate-300">{o.text}</dd>
                 </div>
               ))}
             </dl>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* Loading */}
       {analyzing && (
         <div className="mt-8">
-          <div className="flex items-center gap-3 text-[15px] text-label" aria-live="polite">
-            <Spinner className="text-accent" />
+          <div className="flex items-center gap-3 text-[15px] text-white font-medium" aria-live="polite">
+            <Spinner className="text-white" />
             {LOADING_STEPS[step]}…
           </div>
           <div className="mt-3 flex gap-1.5" aria-hidden>
             {LOADING_STEPS.map((_, i) => (
-              <span key={i} className={`h-1 w-10 rounded-full transition-colors ${i <= step ? 'bg-accent' : 'bg-surface-2'}`} />
+              <span key={i} className={`h-1 w-10 rounded-full transition-colors ${i <= step ? 'bg-white' : 'bg-white/10'}`} />
             ))}
           </div>
           <div className="mt-8 grid gap-4 md:grid-cols-3 md:gap-16">
             {LEVEL_ORDER.map((k) => (
               <div key={k} className="space-y-3">
-                <Skeleton className="h-14" />
-                <Skeleton className="h-24" />
-                <Skeleton className="h-24" />
+                <Skeleton className="h-14 bg-white/[0.06]" />
+                <Skeleton className="h-24 bg-white/[0.06]" />
+                <Skeleton className="h-24 bg-white/[0.06]" />
               </div>
             ))}
           </div>
@@ -253,23 +255,23 @@ function CopilotContent() {
       {/* Result */}
       {analysis && !analyzing && (
         <div className="mt-8 space-y-14">
-          <Card className="grid gap-6 p-6 lg:grid-cols-[auto_1fr] lg:gap-10">
-            <div className="flex justify-center lg:border-r lg:border-line lg:pr-10">
+          <div className="grid gap-6 p-6 lg:grid-cols-[auto_1fr] lg:gap-10 rounded-2xl bg-[#0a0d14]/50 backdrop-blur-md border border-white/[0.07] shadow-2xl">
+            <div className="flex justify-center lg:border-r lg:border-white/[0.07] lg:pr-10">
               <RiskGauge score={analysis.riskScore} />
             </div>
             <div className="min-w-0">
-              <p className="text-[13px] text-label-3">For {submitted}</p>
-              <h2 className="mt-1 text-title-2">{analysis.headline}</h2>
-              {analysis.exposure && <p className="mt-2 max-w-2xl text-body text-label-2">{analysis.exposure}</p>}
+              <p className="text-xs uppercase tracking-wider text-slate-400 font-medium font-mono">For {submitted}</p>
+              <h2 className="mt-1 text-title-2 text-white font-medium">{analysis.headline}</h2>
+              {analysis.exposure && <p className="mt-2 max-w-2xl text-body text-slate-300">{analysis.exposure}</p>}
               {analysis.metrics.length > 0 && (
                 <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
                   {analysis.metrics.map((m, i) => {
                     const TrendIcon = m.trend === 'up' ? TrendingUp : m.trend === 'down' ? TrendingDown : Minus;
-                    const tone = m.trend === 'up' ? 'text-critical' : m.trend === 'down' ? 'text-low' : 'text-label-3';
+                    const tone = 'text-white/70';
                     return (
                       <div key={i}>
-                        <dt className="text-[12px] text-label-3">{m.label}</dt>
-                        <dd className="mt-0.5 flex items-center gap-1.5 text-[17px] font-semibold tabular-nums text-label">
+                        <dt className="text-xs uppercase tracking-wider text-slate-400 font-medium font-mono">{m.label}</dt>
+                        <dd className="mt-1 flex items-center gap-1.5 text-2xl font-semibold tracking-tight tabular-nums text-white">
                           {m.value} <TrendIcon className={`h-4 w-4 ${tone}`} aria-label={`trend ${m.trend}`} />
                         </dd>
                       </div>
@@ -278,12 +280,12 @@ function CopilotContent() {
                 </dl>
               )}
               {modelUsed && (
-                <p className="mt-6 flex items-center gap-1 text-[11px] text-label-3">
+                <p className="mt-6 flex items-center gap-1 text-[11px] text-slate-400 font-mono">
                   <Cpu className="h-3 w-3" /> {modelUsed}
                 </p>
               )}
             </div>
-          </Card>
+          </div>
 
           <section>
             <SectionHeading title="How the shock reaches you" description="Hover a step to trace its chain. Select one to see what causes it and what it leads to." />

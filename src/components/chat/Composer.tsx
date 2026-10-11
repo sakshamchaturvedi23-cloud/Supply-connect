@@ -35,7 +35,7 @@ export const Composer = forwardRef<HTMLTextAreaElement | null, Props>(function C
           e.preventDefault();
           onSend();
         }}
-        className="mx-auto flex max-w-3xl items-end gap-2 rounded-[26px] bg-surface p-2 pl-4 transition-shadow focus-within:ring-2 focus-within:ring-accent/60"
+        className="mx-auto flex max-w-3xl items-end gap-2 rounded-[26px] liquid-glass-strong p-2 pl-4 transition-all focus-within:ring-1 focus-within:ring-white/30"
       >
         <textarea
           ref={inner}
@@ -50,14 +50,14 @@ export const Composer = forwardRef<HTMLTextAreaElement | null, Props>(function C
           }}
           placeholder={placeholder}
           aria-label={placeholder}
-          className="max-h-[200px] min-h-10 flex-1 resize-none bg-transparent py-2 text-[15px] leading-6 text-label outline-none placeholder:text-label-3"
+          className="max-h-[200px] min-h-10 flex-1 resize-none bg-transparent py-2 text-[15px] leading-6 text-white outline-none placeholder:text-white/40"
         />
         {streaming && onStop ? (
           <button
             type="button"
             onClick={onStop}
             aria-label="Stop generating"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-label text-canvas transition-opacity hover:opacity-85"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-black transition-opacity hover:opacity-90"
           >
             <Square className="h-3.5 w-3.5 fill-current" />
           </button>
@@ -66,13 +66,13 @@ export const Composer = forwardRef<HTMLTextAreaElement | null, Props>(function C
             type="submit"
             disabled={!value.trim() || streaming}
             aria-label="Send"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-white transition-colors hover:bg-accent-hover disabled:bg-surface-3 disabled:text-label-3"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-black transition-all hover:bg-white/90 disabled:bg-white/10 disabled:text-white/30"
           >
             <ArrowUp className="h-[18px] w-[18px]" />
           </button>
         )}
       </form>
-      {footnote && <p className="mx-auto mt-2 max-w-3xl text-center text-[12px] text-label-3">{footnote}</p>}
+      {footnote && <p className="mx-auto mt-2 max-w-3xl text-center text-[12px] text-white/40">{footnote}</p>}
     </div>
   );
 });

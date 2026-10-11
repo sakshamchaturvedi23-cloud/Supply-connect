@@ -108,7 +108,14 @@ function AdvisorContent() {
         if ((e as Error)?.name !== 'AbortError') {
           console.error(e);
           setErrorIndex(replyIndex);
-          patch((m) => ({ ...m, content: m.content || 'The advisor couldn’t answer. Check that your LLM server is running, then try again.' }));
+          const msg = String((e as Error)?.message || '');
+          const isAuthError = msg.includes('Not signed in') || msg.includes('401');
+          patch((m) => ({
+            ...m,
+            content: isAuthError
+              ? 'You must be signed in to plan with Strategy Advisor. Please sign in to continue.'
+              : m.content || 'The advisor couldn’t answer. Check that your LLM server is running, then try again.',
+          }));
         }
       } finally {
         abortRef.current = null;
@@ -137,39 +144,39 @@ function AdvisorContent() {
 
   return (
     <div className="flex h-[calc(100dvh-var(--topbar-h))] flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-3 sm:px-5 md:pr-20">
-        <Link href="/explore" aria-label="Back to Disruption Radar" className="inline-grid h-9 w-9 place-items-center rounded-full text-label-2 hover:bg-surface-2 hover:text-label">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/[0.07] bg-[#0a0d14]/40 backdrop-blur-md px-3 sm:px-5 md:pr-20">
+        <Link href="/explore" aria-label="Back to Disruption Radar" className="inline-grid h-9 w-9 place-items-center rounded-full text-white/70 hover:bg-white/10 hover:text-white">
           <ArrowLeft className="h-[18px] w-[18px]" />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-[15px] font-semibold tracking-[-0.01em]">Strategy Advisor</h1>
-          <p className="truncate text-[12px] text-label-3">{disruption ? decodeEntities(disruption.title) : 'Risk mitigation and opportunity planning'}</p>
+          <h1 className="text-[15px] font-medium tracking-tight text-white">Strategy Advisor</h1>
+          <p className="truncate text-[12px] text-slate-400">{disruption ? decodeEntities(disruption.title) : 'Risk mitigation and opportunity planning'}</p>
         </div>
         <Button variant={savedFlash ? 'primary' : 'secondary'} size="sm" onClick={save} disabled={!userHasSpoken || streaming} className="hidden sm:inline-flex">
           {savedFlash ? <Check className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
           {savedFlash ? 'Saved' : alreadySaved ? 'Update saved' : 'Save conversation'}
         </Button>
-        <IconButton aria-label="Save conversation" onClick={save} disabled={!userHasSpoken || streaming} className="sm:hidden">
-          {savedFlash ? <Check className="h-[18px] w-[18px] text-low" /> : <Bookmark className="h-[18px] w-[18px]" />}
+        <IconButton aria-label="Save conversation" onClick={save} disabled={!userHasSpoken || streaming} className="sm:hidden text-white/70 hover:text-white">
+          {savedFlash ? <Check className="h-[18px] w-[18px] text-white" /> : <Bookmark className="h-[18px] w-[18px]" />}
         </IconButton>
       </header>
 
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
           {disruption && (
-            <section aria-label="Signal being discussed" className="mb-10 rounded-card bg-surface p-5">
+            <section aria-label="Signal being discussed" className="mb-10 rounded-2xl bg-[#0a0d14]/50 backdrop-blur-md border border-white/[0.07] p-5 shadow-2xl">
               <div className="flex flex-wrap items-center gap-3 text-[13px]">
                 <SeverityBadge value={disruption.severity} />
                 {disruption.location && (
-                  <span className="flex items-center gap-1 text-label-3">
-                    <MapPin className="h-3.5 w-3.5" /> {decodeEntities(disruption.location)}
+                  <span className="flex items-center gap-1 text-slate-400">
+                    <MapPin className="h-3.5 w-3.5 text-white/40" /> {decodeEntities(disruption.location)}
                   </span>
                 )}
               </div>
-              <h2 className="mt-2 text-headline">{decodeEntities(disruption.title)}</h2>
+              <h2 className="mt-2 text-headline text-white font-medium">{decodeEntities(disruption.title)}</h2>
               {action && (
-                <p className="mt-2 text-[14px] leading-relaxed text-label-2">
-                  {action.label && <span className="text-label-3">{action.label}: </span>}
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
+                  {action.label && <span className="text-slate-400">{action.label}: </span>}
                   {action.text}
                 </p>
               )}
@@ -199,7 +206,7 @@ function AdvisorContent() {
           {!userHasSpoken && (
             <div className="mt-8 flex flex-wrap gap-2 pl-[2.6rem]">
               {STARTERS.map((s) => (
-                <button key={s} onClick={() => send(s)} className="rounded-full px-3.5 py-1.5 text-[13px] text-label-2 ring-1 ring-line transition-colors hover:bg-surface hover:text-label">
+                <button key={s} onClick={() => send(s)} className="rounded-full px-3.5 py-1.5 text-[13px] text-slate-300 bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 transition-all hover:text-white">
                   {s}
                 </button>
               ))}

@@ -2,7 +2,7 @@
  * Only allow same-site relative paths as post-login destinations.
  * Blocks open redirects like "//evil.com", "/\\evil.com" and "https://evil.com".
  */
-export function safeRedirectPath(input: string | null | undefined, fallback = '/'): string {
+export function safeRedirectPath(input: string | null | undefined, fallback = '/dashboard'): string {
   if (!input) return fallback;
   let path = input.trim();
   try {
@@ -15,8 +15,9 @@ export function safeRedirectPath(input: string | null | undefined, fallback = '/
   return path;
 }
 
-export const PUBLIC_PATHS = ['/login', '/auth/callback'];
+export const PUBLIC_PATHS = ['/', '/login', '/auth/callback'];
 
 export function isPublicPath(pathname: string) {
-  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  if (pathname === '/') return true;
+  return PUBLIC_PATHS.filter((p) => p !== '/').some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }

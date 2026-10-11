@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- parses raw untrusted model JSON before normalization */
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
+import { isDevAuthBypass } from '@/lib/supabase/env';
 import { extractJson, normalizeAnalysis } from '@/lib/impact-schema';
 
 export const runtime = 'nodejs';
@@ -316,6 +318,77 @@ export async function POST(req: Request) {
         analysis: best.analysis,
         modelUsed: best.model,
         degraded: true,
+      });
+    }
+
+    if (isDevAuthBypass() || !process.env.FREELLM_API_KEY) {
+      const demoAnalysis = {
+        headline: `[Local Demo Analysis] Elevated Tier-2 Risk Exposure for ${userProfession || 'Operations'}`,
+        riskScore: 78,
+        exposure: `Direct exposure to regional freight chokepoints and upstream component lead-time extensions (${disruptionContext?.title || 'Global supply chain volatility'}).`,
+        levels: {
+          macro: {
+            title: 'Tier 3: Global Macro & Geopolitical',
+            summary: 'Deep-sea transit lanes and export tariffs increase landed intermediate costs.',
+            nodes: [
+              { id: 'm1', title: 'Maritime Transit Surcharges', detail: 'Carrier bunker surcharges elevated across primary East-West corridors.', severity: 'high' },
+              { id: 'm2', title: 'Component Material Fluctuations', detail: 'Key input raw materials experiencing 6-9% spot price divergence.', severity: 'medium' },
+            ],
+          },
+          regional: {
+            title: 'Tier 2: Regional Intermodal & Distribution',
+            summary: 'Port gate dwell times and transshipment bottlenecks extend shipping intervals.',
+            nodes: [
+              { id: 'r1', title: 'Transshipment Hub Bottlenecks', detail: 'Average dwell times at key regional terminals increased by 3.2 days.', severity: 'high' },
+              { id: 'r2', title: 'Inland Drayage Shortages', detail: 'Local chassis availability constrained for intermodal rail connections.', severity: 'medium' },
+            ],
+          },
+          direct: {
+            title: 'Tier 1: Facility Operations & Customer Delivery',
+            summary: 'Production schedules require buffer inventory adjustments to protect customer commitments.',
+            nodes: [
+              { id: 'd1', title: 'Assembly Buffer Depletion', detail: 'Safety stock reduced from 28 to 14 days of average consumption.', severity: 'critical' },
+              { id: 'd2', title: 'Fulfillment Lead Time Drift', detail: 'Outbound order fulfillment promises drifting by 4-7 business days.', severity: 'medium' },
+            ],
+          },
+        },
+        links: [
+          { from: 'm1', to: 'r1', label: 'carrier delays' },
+          { from: 'm2', to: 'r1', label: 'parts inflow' },
+          { from: 'r1', to: 'd1', label: 'buffer drain' },
+          { from: 'r2', to: 'd2', label: 'delivery lag' },
+        ],
+        playbook: [
+          {
+            phase: 'Immediate (0 - 48 Hours)',
+            horizon: 'T+0 to T+2 Days',
+            actions: [
+              { title: 'Audit safety inventory at distribution nodes', detail: 'Verify actual physically landed SKUs vs planned factory allocations.', priority: 'P0', owner: 'Procurement' },
+              { title: 'Contact Tier-1 vendors for delivery validation', detail: 'Require expedited status confirmation for parts in transit.', priority: 'P1', owner: 'Supply Chain Operations' },
+            ],
+          },
+          {
+            phase: 'Tactical (Week 1 - 2)',
+            horizon: 'T+7 to T+14 Days',
+            actions: [
+              { title: 'Establish secondary transit routes', detail: 'Book priority air/rail capacity for critical bottleneck components.', priority: 'P1', owner: 'Logistics' },
+              { title: 'Review customer fulfillment priority tiers', detail: 'Realign shipment allocation with key contract SLA penalties.', priority: 'P2', owner: 'Operations' },
+            ],
+          },
+        ],
+        metrics: [
+          { label: 'Overall Vulnerability', value: '78 / 100', trend: 'up' },
+          { label: 'Estimated Lead Time Drift', value: '+7.5 Days', trend: 'up' },
+          { label: 'Buffer Run-Rate Runway', value: '14 Days', trend: 'down' },
+          { label: 'Contingency Route Readiness', value: '64%', trend: 'flat' },
+        ],
+      };
+
+      return NextResponse.json({
+        success: true,
+        analysis: postProcess(normalizeAnalysis(demoAnalysis), demoAnalysis),
+        modelUsed: 'demo-local-fallback',
+        demo: true,
       });
     }
 

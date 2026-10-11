@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
+import { isDevAuthBypass } from '@/lib/supabase/env';
 import { extractJson } from '@/lib/impact-schema';
 import { briefKey, type BriefSignal, type DailyBrief } from '@/lib/brief';
 
@@ -111,6 +112,19 @@ export async function POST(req: Request) {
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  // In local development bypass mode or when AI services are unconfigured, serve a deterministic demo brief
+  if (isDevAuthBypass() || !process.env.FREELLM_API_KEY) {
+    const top = signals.slice(0, 3);
+    const demoBrief: DailyBrief = {
+      changed: `[Local Demo] Top intelligence alert: ${clean(top[0]?.title ?? 'Global maritime corridors and semiconductor supply shifts', 120)}.`,
+      affected: `${top[0]?.category ?? 'Technology & manufacturing'} supply chains and regional intermodal corridors.`,
+      action: 'Action: Review buffer inventory safety margins and establish secondary transit routes within 48 hours.',
+      signalIds: top.map((s) => String(s.id)),
+    };
+    cache.set(key, demoBrief);
+    return NextResponse.json({ success: true, brief: demoBrief, modelUsed: 'demo-local-fallback', demo: true });
   }
 
   console.error('Daily brief failed', errors);

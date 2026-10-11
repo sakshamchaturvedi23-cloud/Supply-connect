@@ -1,9 +1,9 @@
-import { AlertTriangle, Target, Zap, type LucideIcon } from 'lucide-react';
+import { AlertOctagon, Layers, Target, type LucideIcon } from 'lucide-react';
 import type { LevelKey } from '@/lib/impact-schema';
 
-/** Level 1 = the shock (red), Level 2 = the ripple (orange), Level 3 = you (accent blue). */
+/** Monochrome liquid-glass hierarchy: Level 1 (Global shock), Level 2 (Regional ripple), Level 3 (Your business). */
 export const LEVEL_THEME: Record<LevelKey, { label: string; name: string; hex: string; text: string; ring: string; Icon: LucideIcon }> = {
-  macro: { label: 'Level 1', name: 'Global shock', hex: '#ff453a', text: 'text-critical', ring: 'ring-critical/25', Icon: AlertTriangle },
-  regional: { label: 'Level 2', name: 'Regional ripple', hex: '#ff9f0a', text: 'text-high', ring: 'ring-high/25', Icon: Zap },
-  direct: { label: 'Level 3', name: 'Your business', hex: '#0a84ff', text: 'text-accent', ring: 'ring-accent/25', Icon: Target },
+  macro: { label: 'Level 1', name: 'Global shock', hex: '#FFFFFF', text: 'text-white', ring: 'ring-white/30', Icon: AlertOctagon },
+  regional: { label: 'Level 2', name: 'Regional ripple', hex: '#D4D4D8', text: 'text-white/80', ring: 'ring-white/20', Icon: Layers },
+  direct: { label: 'Level 3', name: 'Your business', hex: '#A1A1AA', text: 'text-white/90', ring: 'ring-white/25', Icon: Target },
 };

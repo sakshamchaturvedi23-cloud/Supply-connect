@@ -33,6 +33,7 @@ async function requestBrief(day: string, signals: BriefSignal[], force: boolean)
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ day, signals, force }),
   });
+  if (res.status === 401) throw new Error('Not signed in');
   const data = await res.json().catch(() => null);
   if (!res.ok || !data?.success || !data.brief) throw new Error(data?.error ?? `HTTP ${res.status}`);
   return data.brief as DailyBrief;
@@ -49,6 +50,7 @@ export function useDailyBrief(data: Disruption[], ready: boolean) {
 
   const [fetched, setFetched] = useState<Cached | null>(null);
   const [failedKey, setFailedKey] = useState<string | null>(null);
+  const [errorReason, setErrorReason] = useState<'unauthorized' | 'failed' | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const inflight = useRef<string | null>(null);
 
@@ -70,6 +72,8 @@ export function useDailyBrief(data: Disruption[], ready: boolean) {
         const b = await requestBrief(day, signals, force);
         const entry: Cached = { key, brief: b };
         writeJSON(CACHE_KEY, entry);
+        setFailedKey(null);
+        setErrorReason(null);
         return entry;
       } finally {
         inflight.current = null;
@@ -83,7 +87,8 @@ export function useDailyBrief(data: Disruption[], ready: boolean) {
     fetchBrief(false)
       .then((entry) => entry && setFetched(entry))
       .catch((e) => {
-        console.error('Daily brief failed', e);
+        const msg = e instanceof Error ? e.message : String(e);
+        setErrorReason(msg.includes('Not signed in') || msg.includes('401') ? 'unauthorized' : 'failed');
         setFailedKey(key);
       });
   }, [key, brief, failedKey, fetchBrief]);
@@ -94,7 +99,8 @@ export function useDailyBrief(data: Disruption[], ready: boolean) {
       const entry = await fetchBrief(true);
       if (entry) setFetched(entry);
     } catch (e) {
-      console.error('Daily brief failed', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      setErrorReason(msg.includes('Not signed in') || msg.includes('401') ? 'unauthorized' : 'failed');
     } finally {
       setRegenerating(false);
     }
@@ -102,6 +108,7 @@ export function useDailyBrief(data: Disruption[], ready: boolean) {
 
   const retry = useCallback(() => {
     setFailedKey(null);
+    setErrorReason(null);
   }, []);
 
   const status: 'idle' | 'loading' | 'ready' | 'error' = !key
@@ -117,5 +124,5 @@ export function useDailyBrief(data: Disruption[], ready: boolean) {
     return (brief?.signalIds ?? []).map((id) => byId.get(id)).filter((s): s is BriefSignal => Boolean(s));
   }, [brief, signals]);
 
-  return { brief, status, sources, signalCount: signals.length, regenerate, regenerating, retry };
+  return { brief, status, errorReason, sources, signalCount: signals.length, regenerate, regenerating, retry };
 }

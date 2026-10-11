@@ -1,10 +1,12 @@
 'use client';
 
 import React, { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Mail } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Mail } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { safeRedirectPath } from '@/lib/redirect';
+import { getSupabaseConfigError, isDevAuthBypass, isSupabaseConfigured } from '@/lib/supabase/env';
 import { Logo } from '@/components/shell/Logo';
 import { Button } from '@/components/ui/Button';
 import { InlineError, Spinner } from '@/components/ui/Feedback';
@@ -13,6 +15,7 @@ type Provider = 'google' | 'github';
 
 const URL_ERRORS: Record<string, string> = {
   auth_callback_failed: 'That sign-in link didn’t work or has expired. Request a new one below.',
+  auth_not_configured: 'Supabase authentication is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local.',
 };
 
 function GoogleIcon() {
@@ -37,17 +40,24 @@ function GitHubIcon() {
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const redirectTo = safeRedirectPath(params.get('redirectTo'), '/');
+  const redirectTo = safeRedirectPath(params.get('redirectTo'), '/dashboard');
   const urlError = params.get('error');
+
+  const isBypass = isDevAuthBypass();
+  const isConfigured = isSupabaseConfigured();
+  const configError = getSupabaseConfigError();
 
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [oauth, setOauth] = useState<Provider | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(urlError ? URL_ERRORS[urlError] ?? 'Sign-in failed. Please try again.' : null);
+  const [error, setError] = useState<string | null>(
+    urlError ? URL_ERRORS[urlError] ?? 'Sign-in failed. Please try again.' : null
+  );
 
   // If a sign-in completes in this browser (e.g. magic link opened in another tab), move on.
   useEffect(() => {
+    if (!isConfigured) return;
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         router.replace(redirectTo);
@@ -55,11 +65,19 @@ function LoginForm() {
       }
     });
     return () => data.subscription.unsubscribe();
-  }, [router, redirectTo]);
+  }, [router, redirectTo, isConfigured]);
 
   const callbackUrl = () => `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`;
 
   const signInWith = async (provider: Provider) => {
+    if (!isConfigured) {
+      setError(
+        configError ||
+          'Supabase authentication is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env.local file.'
+      );
+      return;
+    }
+
     setOauth(provider);
     setError(null);
     const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: callbackUrl() } });
@@ -67,11 +85,18 @@ function LoginForm() {
       setError(error.message);
       setOauth(null);
     }
-    // On success the browser leaves for the provider, so the spinner stays.
   };
 
   const sendLink = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isConfigured) {
+      setError(
+        configError ||
+          'Supabase authentication is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env.local file.'
+      );
+      return;
+    }
+
     const address = email.trim();
     if (!/^\S+@\S+\.\S+$/.test(address)) {
       setError('Enter a valid email address.');
@@ -89,30 +114,72 @@ function LoginForm() {
 
   return (
     <main className="flex min-h-[100dvh] flex-col items-center justify-center px-5 py-12">
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-md rounded-3xl liquid-glass-strong p-8 sm:p-10 shadow-2xl">
         <div className="flex justify-center">
           <Logo />
         </div>
 
         {sentTo ? (
-          <div className="mt-10 text-center" aria-live="polite">
-            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-accent/15 text-accent">
+          <div className="mt-8 text-center" aria-live="polite">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-white/15 text-white">
               <Mail className="h-6 w-6" />
             </span>
-            <h1 className="mt-5 text-title-2">Check your inbox</h1>
-            <p className="mt-2 text-body text-label-2">
-              We sent a sign-in link to <span className="font-medium text-label">{sentTo}</span>. Open it on this device to continue.
+            <h1 className="mt-5 text-title-2 text-white font-medium">Check your inbox</h1>
+            <p className="mt-2 text-body text-white/70">
+              We sent a sign-in link to <span className="font-medium text-white">{sentTo}</span>. Open it on this device to continue.
             </p>
-            <Button variant="ghost" size="sm" className="mt-6" onClick={() => setSentTo(null)}>
+            <Button variant="secondary" size="sm" className="mt-6 liquid-glass text-white/80" onClick={() => setSentTo(null)}>
               <ArrowLeft className="h-3.5 w-3.5" /> Use a different email
             </Button>
           </div>
         ) : (
           <>
-            <div className="mt-10 text-center">
-              <h1 className="text-title-1">Sign in</h1>
-              <p className="mt-2 text-body text-label-2">Track supply chain risks and plan your response.</p>
+            <div className="mt-8 text-center">
+              <h1 className="text-title-1 text-white font-medium">Sign in</h1>
+              <p className="mt-2 text-body text-white/70">Track supply chain risks and plan your response.</p>
             </div>
+
+            {isBypass && (
+              <div className="mt-6 rounded-2xl liquid-glass border border-white/20 p-4 text-left text-[13px] text-white/80" role="status">
+                <div className="flex items-center gap-2 font-medium text-white">
+                  <span className="inline-block h-2 w-2 rounded-full bg-white animate-pulse" />
+                  <span>Local Dev Auth Bypass Active</span>
+                </div>
+                <p className="mt-1 leading-snug text-white/70">
+                  Authentication is bypassed for local development previewing. You can access all pages directly without logging in.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Link
+                    href="/dashboard"
+                    className="rounded-lg bg-white/15 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-white/25 transition-colors border border-white/15"
+                  >
+                    Open Dashboard →
+                  </Link>
+                  <Link
+                    href="/explore"
+                    className="rounded-lg bg-white/15 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-white/25 transition-colors border border-white/15"
+                  >
+                    Open Radar →
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {!isConfigured && (
+              <div className="mt-4 rounded-2xl liquid-glass border border-white/20 p-4 text-left text-[13px] text-white/80" role="alert">
+                <div className="flex items-center gap-1.5 font-medium text-white">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-white/70" />
+                  <span>Supabase OAuth Not Configured</span>
+                </div>
+                <p className="mt-1.5 leading-snug text-white/70">
+                  Real OAuth sign-in requires adding your project credentials to <code className="rounded bg-white/10 px-1 py-0.5 text-white">.env.local</code>:
+                </p>
+                <div className="mt-2 space-y-1 font-mono text-[11px] text-white/80 bg-white/5 rounded-lg p-2.5 border border-white/10">
+                  <div>NEXT_PUBLIC_SUPABASE_URL</div>
+                  <div>NEXT_PUBLIC_SUPABASE_ANON_KEY</div>
+                </div>
+              </div>
+            )}
 
             {error && <InlineError className="mt-6">{error}</InlineError>}
 
@@ -121,7 +188,7 @@ function LoginForm() {
                 type="button"
                 onClick={() => signInWith('google')}
                 disabled={busy}
-                className="flex h-12 w-full items-center justify-center gap-3 rounded-full bg-white text-[15px] font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-full bg-white text-[15px] font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50 shadow-md"
               >
                 {oauth === 'google' ? <Spinner className="text-black" /> : <GoogleIcon />}
                 {oauth === 'google' ? 'Opening Google…' : 'Continue with Google'}
@@ -130,17 +197,17 @@ function LoginForm() {
                 type="button"
                 onClick={() => signInWith('github')}
                 disabled={busy}
-                className="flex h-12 w-full items-center justify-center gap-3 rounded-full bg-surface-2 text-[15px] font-medium text-label transition-colors hover:bg-surface-3 disabled:opacity-50"
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-full liquid-glass text-[15px] font-medium text-white transition-colors hover:bg-white/15 disabled:opacity-50"
               >
-                {oauth === 'github' ? <Spinner /> : <GitHubIcon />}
+                {oauth === 'github' ? <Spinner className="text-white" /> : <GitHubIcon />}
                 {oauth === 'github' ? 'Opening GitHub…' : 'Continue with GitHub'}
               </button>
             </div>
 
-            <div className="my-7 flex items-center gap-3 text-[13px] text-label-3">
-              <span className="h-px flex-1 bg-line" />
+            <div className="my-7 flex items-center gap-3 text-[13px] text-white/40">
+              <span className="h-px flex-1 bg-white/10" />
               or use email
-              <span className="h-px flex-1 bg-line" />
+              <span className="h-px flex-1 bg-white/10" />
             </div>
 
             <form onSubmit={sendLink} className="space-y-3">
@@ -155,15 +222,15 @@ function LoginForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@company.com"
                 disabled={busy}
-                className="h-12 w-full rounded-full bg-surface px-5 text-[15px] text-label outline-none placeholder:text-label-3 focus:ring-2 focus:ring-accent/60 disabled:opacity-60"
+                className="h-12 w-full rounded-full liquid-glass px-5 text-[15px] text-white outline-none placeholder:text-white/40 focus:ring-1 focus:ring-white/30 disabled:opacity-60"
               />
-              <Button type="submit" size="lg" className="w-full" disabled={busy || !email.trim()}>
+              <Button type="submit" size="lg" variant="primary" className="w-full font-medium" disabled={busy || !email.trim()}>
                 {sending && <Spinner />}
                 {sending ? 'Sending link…' : 'Email me a sign-in link'}
               </Button>
             </form>
 
-            <p className="mt-6 text-center text-[13px] text-label-3">No password needed. New here? Signing in creates your account.</p>
+            <p className="mt-6 text-center text-[13px] text-white/50">No password needed. New here? Signing in creates your account.</p>
           </>
         )}
       </div>

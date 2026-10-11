@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { isSupabaseConfigured } from '@/lib/supabase/env';
 import { safeRedirectPath } from '@/lib/redirect';
 
 /**
@@ -9,8 +10,13 @@ import { safeRedirectPath } from '@/lib/redirect';
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
-  const next = safeRedirectPath(url.searchParams.get('next'), '/');
+  const next = safeRedirectPath(url.searchParams.get('next'), '/dashboard');
   const providerError = url.searchParams.get('error_description') || url.searchParams.get('error');
+
+  if (!isSupabaseConfigured()) {
+    console.error('[auth] OAuth callback reached but Supabase credentials are not configured in .env.local.');
+    return NextResponse.redirect(new URL('/login?error=auth_not_configured', url.origin));
+  }
 
   if (code && !providerError) {
     try {

@@ -1,0 +1,135 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { Disruption, dedupe, fetchDisruptions, shuffled } from '@/lib/disruptions';
+import { STORAGE_KEYS } from '@/lib/storage';
+
+const AUTO_SYNC_MS = 24 * 60 * 60 * 1000;
+const STALE_MS = 60 * 1000;
+
+/* Module-level cache: navigating between pages reuses data instantly. */
+let cache: { data: Disruption[]; at: number } | null = null;
+let inflightLoad: Promise<Disruption[]> | null = null;
+let inflightSync: Promise<{ success: boolean; error?: string }> | null = null;
+
+function load(force = false): Promise<Disruption[]> {
+  if (!force && cache && Date.now() - cache.at < STALE_MS) return Promise.resolve(cache.data);
+  if (!inflightLoad) {
+    inflightLoad = fetchDisruptions()
+      .then((rows) => {
+        // Every fresh load (page reload, sync, stale cache) deals a new shuffled feed.
+        const data = shuffled(dedupe(rows));
+        cache = { data, at: Date.now() };
+        return data;
+      })
+      .finally(() => {
+        inflightLoad = null;
+      });
+  }
+  return inflightLoad;
+}
+
+/** Calls the ingest API. Only one sync can run at a time across the whole app. */
+function runSync(): Promise<{ success: boolean; error?: string }> {
+  if (!inflightSync) {
+    inflightSync = fetch('/api/ingest', { cache: 'no-store' })
+      .then(async (res) => {
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          return { success: false, error: body?.error ?? `HTTP ${res.status}` };
+        }
+        try {
+          localStorage.setItem(STORAGE_KEYS.lastSync, String(Date.now()));
+        } catch {
+          /* ignore */
+        }
+        return { success: true };
+      })
+      .catch((err) => {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      })
+      .finally(() => {
+        inflightSync = null;
+      });
+  }
+  return inflightSync;
+}
+
+function syncIsDue() {
+  try {
+    const last = Number(localStorage.getItem(STORAGE_KEYS.lastSync) ?? 0);
+    return !last || Date.now() - last > AUTO_SYNC_MS;
+  } catch {
+    return false;
+  }
+}
+
+type Status = 'loading' | 'ready' | 'error';
+
+export function useDisruptions({ autoSync = false }: { autoSync?: boolean } = {}) {
+  const [data, setData] = useState<Disruption[]>(() => cache?.data ?? []);
+  const [status, setStatus] = useState<Status>(() => (cache ? 'ready' : 'loading'));
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+
+  const reload = useCallback(async (force = false) => {
+    try {
+      setData(await load(force));
+      setStatus('ready');
+    } catch (e) {
+      console.error('Could not load disruptions', e);
+      setStatus((s) => (s === 'ready' ? s : 'error'));
+    }
+  }, []);
+
+  const sync = useCallback(async () => {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const res = await runSync();
+      if (!res.success && res.error) {
+        if (res.error.toLowerCase().includes('not signed in')) {
+          setSyncError('Sign in required to trigger news sync.');
+        } else {
+          setSyncError(res.error);
+        }
+      } else {
+        setLastSyncedAt(Date.now());
+      }
+    } catch (e) {
+      console.error('Sync failed', e);
+    }
+    await reload(true);
+    setSyncing(false);
+  }, [reload]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await reload();
+      if (!cancelled && autoSync && syncIsDue()) {
+        setSyncing(true);
+        try {
+          await runSync();
+          await reload(true);
+        } catch (e) {
+          console.error('Auto-sync failed', e);
+        }
+        if (!cancelled) setSyncing(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [autoSync, reload]);
+
+  /** Re-deal the feed without hitting the network. */
+  const shuffle = useCallback(() => {
+    const next = shuffled(cache?.data ?? data);
+    if (cache) cache = { ...cache, data: next };
+    setData(next);
+  }, [data]);
+
+  return { data, status, syncing, sync, syncError, reload, shuffle, lastSyncedAt };
+}

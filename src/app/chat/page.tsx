@@ -104,10 +104,14 @@ function ChatContent() {
       } catch (e) {
         if ((e as Error)?.name !== 'AbortError') {
           console.error(e);
+          const msg = String((e as Error)?.message || '');
+          const isAuthError = msg.includes('Not signed in') || msg.includes('401');
           patchMessage(sid, assistantId, (m) => ({
             ...m,
             error: true,
-            content: m.content || 'Supply AI couldn’t answer. Check that your LLM server is running, then try again.',
+            content: isAuthError
+              ? 'You must be signed in to consult Supply AI. Please sign in to continue.'
+              : m.content || 'Supply AI couldn’t answer. Check that your LLM server is running, then try again.',
           }));
         }
       } finally {
@@ -223,23 +227,23 @@ function ChatContent() {
   const historyList = (
     <>
       <div className="flex items-center justify-between px-4 pb-3 pt-4">
-        <h2 className="text-[13px] font-medium text-label-2">Conversations</h2>
-        <IconButton aria-label="Close conversations" onClick={() => setHistoryOpen(false)} className="lg:hidden">
+        <h2 className="text-[13px] font-medium text-white/50 uppercase tracking-wider font-mono">Conversations</h2>
+        <IconButton aria-label="Close conversations" onClick={() => setHistoryOpen(false)} className="text-white/60 hover:text-white lg:hidden">
           <X className="h-4 w-4" />
         </IconButton>
       </div>
       <div className="px-3">
-        <Button onClick={startNewChat} size="sm" className="w-full">
+        <Button onClick={startNewChat} variant="primary" size="sm" className="w-full font-medium">
           <Plus className="h-4 w-4" /> New chat
         </Button>
       </div>
       <ul className="mt-3 flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
-        {history.length === 0 && <li className="px-3 py-2 text-[13px] text-label-3">Your conversations will appear here.</li>}
+        {history.length === 0 && <li className="px-3 py-2 text-[13px] text-white/40">Your conversations will appear here.</li>}
         {history.map((s) => {
           const isActive = s.id === activeId;
           const Icon = s.messages.some((m) => m.attachment) ? Network : MessageSquare;
           return (
-            <li key={s.id} className={cn('group flex items-center gap-1 rounded-xl pr-1', isActive ? 'bg-surface-2' : 'hover:bg-surface')}>
+            <li key={s.id} className={cn('group flex items-center gap-1 rounded-xl pr-1 transition-colors', isActive ? 'bg-white/15 text-white' : 'hover:bg-white/5 text-white/70')}>
               <button
                 onClick={() => {
                   setActiveId(s.id);
@@ -247,13 +251,13 @@ function ChatContent() {
                 }}
                 className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-left"
               >
-                <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-accent' : 'text-label-3')} />
+                <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-white' : 'text-white/40')} />
                 <span className="min-w-0">
-                  <span className={cn('block truncate text-[13px]', isActive ? 'text-label' : 'text-label-2')}>{s.title}</span>
-                  <span className="block text-[11px] text-label-3">{relativeTime(s.updatedAt)}</span>
+                  <span className={cn('block truncate text-[13px]', isActive ? 'text-white font-medium' : 'text-white/80')}>{s.title}</span>
+                  <span className="block text-[11px] text-white/40">{relativeTime(s.updatedAt)}</span>
                 </span>
               </button>
-              <IconButton aria-label="Delete conversation" onClick={() => deleteSession(s.id)} className="h-7 w-7 opacity-0 hover:text-critical group-hover:opacity-100 focus-visible:opacity-100">
+              <IconButton aria-label="Delete conversation" onClick={() => deleteSession(s.id)} className="h-7 w-7 opacity-0 text-white/40 hover:text-white group-hover:opacity-100 focus-visible:opacity-100">
                 <Trash2 className="h-3.5 w-3.5" />
               </IconButton>
             </li>
@@ -266,26 +270,26 @@ function ChatContent() {
   return (
     <div className="flex h-[calc(100dvh-var(--topbar-h))]">
       {/* Conversation list */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-line lg:flex">{historyList}</aside>
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-white/[0.07] bg-[#0a0d14]/40 backdrop-blur-md lg:flex">{historyList}</aside>
       {historyOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setHistoryOpen(false)} aria-hidden />
-          <aside className="absolute inset-y-0 right-0 flex w-72 flex-col bg-canvas shadow-2xl">{historyList}</aside>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setHistoryOpen(false)} aria-hidden />
+          <aside className="absolute inset-y-0 right-0 flex w-72 flex-col bg-[#0a0d14]/80 backdrop-blur-xl border-l border-white/[0.08] shadow-2xl">{historyList}</aside>
         </div>
       )}
 
       {/* Thread */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line px-4 sm:px-6 md:pr-20">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/[0.07] bg-[#0a0d14]/40 backdrop-blur-md px-4 sm:px-6 md:pr-20">
           <div className="min-w-0">
-            <h1 className="text-[15px] font-semibold tracking-[-0.01em]">Supply AI</h1>
-            <p className="truncate text-[12px] text-label-3">{active?.messages.length ? active.title : 'Markets, logistics and supplier risk'}</p>
+            <h1 className="text-[15px] font-medium tracking-tight text-white">Supply AI</h1>
+            <p className="truncate text-[12px] text-slate-400">{active?.messages.length ? active.title : 'Markets, logistics and supplier risk'}</p>
           </div>
           <div className="flex items-center gap-1 lg:hidden">
-            <IconButton aria-label="New chat" onClick={startNewChat}>
+            <IconButton aria-label="New chat" onClick={startNewChat} className="text-white/70 hover:text-white">
               <Plus className="h-[18px] w-[18px]" />
             </IconButton>
-            <IconButton aria-label="Show conversations" onClick={() => setHistoryOpen(true)}>
+            <IconButton aria-label="Show conversations" onClick={() => setHistoryOpen(true)} className="text-white/70 hover:text-white">
               <History className="h-[18px] w-[18px]" />
             </IconButton>
           </div>
@@ -295,18 +299,18 @@ function ChatContent() {
           <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
             {ready && messages.length === 0 ? (
               <div className="flex flex-col items-center pt-[8vh] text-center">
-                <span className="grid h-12 w-12 place-items-center rounded-full bg-accent/15 text-accent">
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-white/10 border border-white/15 text-white shadow-lg">
                   <Sparkles className="h-6 w-6" />
                 </span>
-                <h2 className="mt-5 text-title-1">How can I help?</h2>
-                <p className="mt-2 max-w-md text-body text-label-2">
+                <h2 className="mt-5 text-title-1 text-white font-medium">How can I help?</h2>
+                <p className="mt-2 max-w-md text-body text-slate-300">
                   Ask about market trends, supplier risk or logistics, or share an analysis from Impact Copilot.
                 </p>
                 <div className="mt-8 grid w-full gap-2 sm:grid-cols-2">
                   {SUGGESTIONS.map((s) => (
-                    <button key={s.title} onClick={() => send(s.prompt)} className="rounded-2xl bg-surface p-4 text-left transition-colors hover:bg-surface-2">
-                      <p className="text-[14px] font-medium text-label">{s.title}</p>
-                      <p className="mt-1 line-clamp-2 text-[13px] text-label-3">{s.prompt}</p>
+                    <button key={s.title} onClick={() => send(s.prompt)} className="rounded-2xl bg-[#0a0d14]/50 backdrop-blur-md border border-white/[0.07] p-4 text-left transition-all hover:bg-white/[0.06] hover:border-white/15 shadow-xl">
+                      <p className="text-[14px] font-medium text-white">{s.title}</p>
+                      <p className="mt-1 line-clamp-2 text-[13px] text-slate-400">{s.prompt}</p>
                     </button>
                   ))}
                 </div>

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
+import { isDevAuthBypass } from '@/lib/supabase/env';
 
 export const runtime = 'nodejs';
 
@@ -51,7 +52,7 @@ const INVALID_MARKERS = ['invalid business input', 'invalid business', 'invalid 
 
 function looksInvalid(payload: unknown): boolean {
   if (!payload || typeof payload !== 'object') return false;
-  const p = payload as Record<string, any>;
+  const p = payload as Record<string, unknown>;
 
   // 1) explicit flags / score
   if (p.invalid === true || p.isInvalid === true) return true;
@@ -66,7 +67,7 @@ function looksInvalid(payload: unknown): boolean {
   }
 
   // 3) levels exist but every level has zero nodes = empty analysis
-  const levels = p.levels;
+  const levels = p.levels as Record<string, { nodes?: unknown[] }> | undefined;
   if (levels && typeof levels === 'object') {
     const lv = [levels.macro, levels.regional, levels.direct];
     const allEmpty = lv.every((l) => !Array.isArray(l?.nodes) || l.nodes.length === 0);
@@ -75,7 +76,7 @@ function looksInvalid(payload: unknown): boolean {
   return false;
 }
 
-function isInvalidImpact(body: Record<string, any>, lastUserMessage: string): boolean {
+function isInvalidImpact(body: Record<string, unknown>, lastUserMessage: string): boolean {
   const payloads = [body?.disruptionContext, body?.impactContext, body?.impactAnalysis, body?.analysis];
   if (payloads.some(looksInvalid)) return true;
   return lastUserMessage.toLowerCase().includes('invalid business input');
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
 
-  let body: Record<string, any>;
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
@@ -218,6 +219,29 @@ ACTIVE DISRUPTION CONTEXT:
   }
 
   if (!upstream || !upstream.body) {
+    if (isDevAuthBypass() || !process.env.FREELLM_API_KEY) {
+      const demoReply = `[Local Development Demo Mode]\n\nSupply AI Intelligence Assistant is active in local development preview.\n\nKey Insights for Today's Risk Profile:\n• Maritime Lanes: Red Sea & Suez throughput remains constrained; average transit times expanded by 7-10 days.\n• Semiconductor Fab Nodes: High-performance wafer substrate supply remains tight, with lead times stable at 14 weeks.\n• Procurement Recommendation: Ensure safety inventory for critical microelectronics at regional distribution centers.\n\n(Note: Connect your AI Gateway API key in .env.local to stream live LLM responses).`;
+
+      if (wantStream) {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(demoReply));
+            controller.close();
+          },
+        });
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-cache, no-transform',
+            'X-Model-Used': 'demo-local-fallback',
+          },
+        });
+      }
+
+      return NextResponse.json({ success: true, reply: demoReply, modelUsed: 'demo-local-fallback', demo: true });
+    }
+
     console.error('All chat models failed or body is missing', errors);
     return NextResponse.json(
       { success: false, error: 'All models failed or missing body', details: errors },

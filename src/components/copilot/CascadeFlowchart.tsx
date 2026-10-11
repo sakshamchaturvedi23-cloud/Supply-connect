@@ -3,7 +3,6 @@
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown } from 'lucide-react';
 import { ImpactAnalysis, ImpactNode, LEVEL_ORDER, LevelKey } from '@/lib/impact-schema';
-import { SEVERITY_BG } from '@/components/ui/Badge';
 import { cn } from '@/components/ui/cn';
 import { LEVEL_THEME } from './theme';
 
@@ -142,7 +141,6 @@ export function CascadeFlowchart({
                 <FlowNode
                   key={n.id}
                   node={n}
-                  levelKey={key}
                   dimmed={!!chain && !chain.has(n.id)}
                   selected={selectedId === n.id}
                   onHover={setHovered}
@@ -165,20 +163,22 @@ export function CascadeFlowchart({
 
 function FlowNode({
   node,
-  levelKey,
   dimmed,
   selected,
   onHover,
   onClick,
 }: {
   node: ImpactNode;
-  levelKey: LevelKey;
   dimmed: boolean;
   selected: boolean;
   onHover: (id: string | null) => void;
   onClick: () => void;
 }) {
-  const t = LEVEL_THEME[levelKey];
+  const sevDot =
+    node.severity === 'critical' ? 'bg-white' :
+    node.severity === 'high' ? 'bg-white/80' :
+    node.severity === 'medium' ? 'bg-white/50' : 'bg-white/25';
+
   return (
     <button
       type="button"
@@ -190,18 +190,19 @@ function FlowNode({
       onBlur={() => onHover(null)}
       onClick={onClick}
       className={cn(
-        'w-full rounded-2xl bg-surface p-4 text-left ring-1 transition-[opacity,box-shadow,background-color] duration-200 hover:bg-surface-2',
-        selected ? 'ring-2' : t.ring,
+        'w-full rounded-2xl p-4 text-left transition-all duration-200',
+        selected
+          ? 'bg-[#0e121d]/75 backdrop-blur-lg border border-white/20 ring-1 ring-white/40 shadow-2xl'
+          : 'bg-[#0a0d14]/50 backdrop-blur-md border border-white/[0.07] hover:bg-white/[0.06] hover:border-white/15 shadow-xl',
         dimmed ? 'opacity-30' : 'opacity-100',
       )}
-      style={selected ? { ['--tw-ring-color' as string]: t.hex } : undefined}
     >
       <div className="flex items-start gap-2.5">
-        <span aria-hidden className={cn('mt-[7px] h-2 w-2 shrink-0 rounded-full', SEVERITY_BG[node.severity])} />
+        <span aria-hidden className={cn('mt-[7px] h-2 w-2 shrink-0 rounded-full', sevDot)} />
         <div className="min-w-0">
-          <p className="text-[14px] font-medium text-label">{node.title}</p>
-          {node.detail && <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-label-2">{node.detail}</p>}
-          <p className="mt-2 text-[12px] capitalize text-label-3">{node.severity}</p>
+          <p className="text-[14px] font-medium text-white">{node.title}</p>
+          {node.detail && <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-white/70">{node.detail}</p>}
+          <p className="mt-2 text-[11px] font-mono uppercase tracking-wider text-white/50">{node.severity} risk</p>
         </div>
       </div>
     </button>
