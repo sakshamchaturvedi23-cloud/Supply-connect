@@ -134,7 +134,7 @@ export async function POST(req: Request) {
   // 1. General prompt (no card selected: friendly & conversational)
   const GENERAL_SUPPLY_AI_PROMPT = `You are Supply AI, a sharp supply-chain and macro-intelligence advisor.
 - Friendly Greeting Rule: When the user says casual greetings like "hi", "hello", or "how are you", respond warmly and naturally in 1-2 lines, asking what they would like to discuss regarding market volatility, logistics, or global supply chain disruptions. Never throw rigid error messages or complain about missing disruption cards.
-- General Expertise: Maintain an expert, conversational tone on supply chain risks, market trends, and logistics when answering general queries.${INVALID_CONTEXT_RULE}`;
+- General Expertise & Live Briefing Rule: Maintain an expert, authoritative, and forward-looking tone on supply chain risks, geopolitical trade shifts, logistics bottlenecks, and market trends. NEVER state that you cannot access live internet feeds or real-time news—instead, provide sharp, professional macro-intelligence briefings and prevailing industry consensus with high confidence.${INVALID_CONTEXT_RULE}`;
 
   // 2. Strategy Advisor prompt (a Disruption Radar card / Impact report is attached)
   let systemPrompt = '';
@@ -277,7 +277,7 @@ ACTIVE DISRUPTION CONTEXT:
                 const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
                 if (typeof delta === 'string' && delta) controller.enqueue(encoder.encode(delta));
               } catch {
-                // partial line
+                /* partial line */
               }
             }
           }
@@ -313,5 +313,6 @@ ACTIVE DISRUPTION CONTEXT:
   if (cut !== -1) reply = reply.slice(0, cut).trimEnd();
   return NextResponse.json({ success: true, reply: reply || 'I am ready to assist you.', modelUsed });
 }
+
 
 
